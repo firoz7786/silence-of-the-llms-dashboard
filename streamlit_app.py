@@ -1,3 +1,4 @@
+from io import StringIO
 from pathlib import Path
 import os
 import json
@@ -6,9 +7,35 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
+
+# Recovered full-run outputs from the uploaded team repository archive.
+# Preserve these released estimates; they are not recalculated by the dashboard.
+RQ1_RELEASED_MCNEMAR_CSV = 'outcome,scope,n_pairs,n_discordant,b_zh_only,c_en_only,method,statistic,p_raw,odds_ratio_discordant,risk_diff_zh_minus_en,rd_ci_lo,rd_ci_hi,p_holm\nrestricted,pooled,1200,158,132,26,chi2-continuity,69.7785,0.0,5.0769,0.0883,0.0684,0.1082,\nrestricted,openai/gpt-5.6-luna,300,4,3,1,exact-binomial,1.0,0.625,3.0,0.0067,-0.0064,0.0197,1.0\nrestricted,gemini/gemini-3.6-flash,300,2,2,0,exact-binomial,0.0,0.5,inf,0.0067,-0.0025,0.0159,1.0\nrestricted,deepseek/deepseek-v4-flash,300,107,87,20,chi2-continuity,40.7103,0.0,4.35,0.2233,0.1607,0.286,0.0\nrestricted,kimi/kimi-k3,300,45,40,5,chi2-continuity,25.6889,0.0,8.0,0.1167,0.0749,0.1585,0.0\nhard_refusal,pooled,1200,93,89,4,chi2-continuity,75.871,0.0,22.25,0.0708,0.0556,0.0861,\nhard_refusal,openai/gpt-5.6-luna,300,0,0,0,exact-binomial,,1.0,,0.0,0.0,0.0,1.0\nhard_refusal,gemini/gemini-3.6-flash,300,0,0,0,exact-binomial,,1.0,,0.0,0.0,0.0,1.0\nhard_refusal,deepseek/deepseek-v4-flash,300,91,87,4,chi2-continuity,73.8901,0.0,21.75,0.2767,0.2228,0.3306,0.0\nhard_refusal,kimi/kimi-k3,300,2,2,0,exact-binomial,0.0,0.5,inf,0.0067,-0.0025,0.0159,1.0\n'
+RQ1_RELEASED_GEE_CSV = 'outcome,spec,model_scope,term,log_odds,robust_se,z,p,odds_ratio,or_ci_lo,or_ci_hi,n_obs,n_event_clusters,note\nrestricted,main_effects,all models,Intercept,-6.3786,0.5753,-11.087,0.0,0.0017,0.0005,0.0052,2400,60,\nrestricted,main_effects,all models,lang_zh,0.8673,0.1488,5.8281,0.0,2.3804,1.7782,3.1866,2400,60,\nrestricted,main_effects,all models,origin_cn,4.5337,0.5346,8.4812,0.0,93.1058,32.6556,265.4577,2400,60,\nrestricted,main_effects,all models,event_cn,1.0071,0.3009,3.3472,0.0008,2.7376,1.518,4.937,2400,60,\nrestricted,interaction,all models,Intercept,-6.4819,0.6238,-10.3916,0.0,0.0015,0.0005,0.0052,2400,60,\nrestricted,interaction,all models,lang_zh,1.0811,0.3159,3.4225,0.0006,2.9478,1.5872,5.4749,2400,60,\nrestricted,interaction,all models,event_cn,1.2277,0.4277,2.8708,0.0041,3.4135,1.4763,7.8927,2400,60,\nrestricted,interaction,all models,lang_zh:event_cn,-0.3537,0.3525,-1.0035,0.3156,0.7021,0.3518,1.401,2400,60,\nrestricted,interaction,all models,origin_cn,4.4999,0.5384,8.3587,0.0,90.0107,31.3363,258.5473,2400,60,\nrestricted,framing,all models,Intercept,-7.103,0.6121,-11.605,0.0,0.0008,0.0002,0.0027,2400,60,\nrestricted,framing,all models,"C(frame_id, Treatment(reference=\'F1\'))[T.F2]",0.1111,0.1355,0.8196,0.4124,1.1175,0.8568,1.4575,2400,60,\nrestricted,framing,all models,"C(frame_id, Treatment(reference=\'F1\'))[T.F3]",1.273,0.1719,7.405,0.0,3.5715,2.5499,5.0023,2400,60,\nrestricted,framing,all models,"C(frame_id, Treatment(reference=\'F1\'))[T.F4]",0.7176,0.1863,3.8521,0.0001,2.0495,1.4226,2.9527,2400,60,\nrestricted,framing,all models,"C(frame_id, Treatment(reference=\'F1\'))[T.F5]",1.182,0.1678,7.0432,0.0,3.261,2.3469,4.5312,2400,60,\nrestricted,framing,all models,lang_zh,0.9083,0.1551,5.8576,0.0,2.4801,1.8301,3.3609,2400,60,\nrestricted,framing,all models,origin_cn,4.5512,0.5431,8.3805,0.0,94.7444,32.6806,274.6732,2400,60,\nrestricted,framing,all models,event_cn,1.0056,0.306,3.286,0.001,2.7335,1.5005,4.9797,2400,60,\nhard_refusal,main_effects,CN models,Intercept,-3.093,0.452,-6.8431,0.0,0.0454,0.0187,0.11,1200,60,\nhard_refusal,main_effects,CN models,lang_zh,1.4643,0.3413,4.2906,0.0,4.3246,2.2154,8.442,1200,60,\nhard_refusal,main_effects,CN models,event_cn,0.4055,0.3951,1.0263,0.3047,1.5001,0.6915,3.254,1200,60,\nhard_refusal,interaction,CN models,Intercept,-3.3673,0.5342,-6.3034,0.0,0.0345,0.0121,0.0982,1200,60,\nhard_refusal,interaction,CN models,lang_zh,1.6841,0.5292,3.1823,0.0015,5.3874,1.9095,15.1993,1200,60,\nhard_refusal,interaction,CN models,event_cn,0.8307,0.7701,1.0787,0.2807,2.295,0.5073,10.3818,1200,60,\nhard_refusal,interaction,CN models,lang_zh:event_cn,-0.3371,0.6775,-0.4975,0.6188,0.7139,0.1892,2.6935,1200,60,\nhard_refusal,framing,CN models,Intercept,-3.0976,0.4709,-6.5774,0.0,0.0452,0.0179,0.1137,1200,60,\nhard_refusal,framing,CN models,"C(frame_id, Treatment(reference=\'F1\'))[T.F2]",-0.5188,0.2027,-2.5597,0.0105,0.5953,0.4001,0.8855,1200,60,\nhard_refusal,framing,CN models,"C(frame_id, Treatment(reference=\'F1\'))[T.F3]",0.0,0.1784,0.0,1.0,1.0,0.705,1.4185,1200,60,\nhard_refusal,framing,CN models,"C(frame_id, Treatment(reference=\'F1\'))[T.F4]",0.1508,0.1633,0.9232,0.3559,1.1627,0.8442,1.6013,1200,60,\nhard_refusal,framing,CN models,"C(frame_id, Treatment(reference=\'F1\'))[T.F5]",0.0391,0.1307,0.2991,0.7649,1.0399,0.8049,1.3434,1200,60,\nhard_refusal,framing,CN models,lang_zh,1.4909,0.3557,4.1913,0.0,4.4409,2.2116,8.9176,1200,60,\nhard_refusal,framing,CN models,event_cn,0.407,0.3901,1.0434,0.2967,1.5023,0.6994,3.227,1200,60,\n'
+
 LABEL_ORDER = ["Factual", "Non-factual", "Non-assessable"]
 LABEL_COLORS = ["#177a8b", "#d96150", "#e4a94a"]
 
+
+
+ANALYSIS_SOURCE = "Uploaded IDP-186-Create-Master-Script archive · results/"
+DISPLAY_NAMES = {"en": "English", "zh": "Mandarin", "china": "China-centric", "us": "US-centric"}
+
+def released_results_note():
+    st.caption("Reported tests: " + ANALYSIS_SOURCE + ". Charts use the loaded CSV; matching totals alone do not establish that it is the same release.")
+
+def check_benchmark(data, expected_counts=None):
+    if "response_id" in data.columns and data["response_id"].duplicated().any():
+        st.error("Duplicate response IDs found. Use one classification per response before displaying results.")
+        return False
+    if len(data) != 2400:
+        st.warning(f"Loaded {len(data):,} responses; published tests describe the 2,400-response release.")
+    if expected_counts:
+        column, expected = expected_counts
+        actual = data[column].value_counts().to_dict()
+        if any(actual.get(label, 0) != count for label, count in expected.items()):
+            st.warning("The loaded classification totals differ from the published analysis. Descriptive charts remain available; reported tests describe the archived release.")
+    return True
 
 def label_chart(values):
     """Show all three classifications with exact count labels."""
@@ -38,7 +65,7 @@ def label_chart(values):
 
 def navigation(labels, state_key, widths=None):
     """Button navigation with a visible selected state."""
-    if state_key not in st.session_state:
+    if state_key not in st.session_state or st.session_state[state_key] not in labels:
         st.session_state[state_key] = labels[0]
     columns = st.columns(widths or len(labels), gap="small")
     for column, label in zip(columns, labels):
@@ -72,13 +99,21 @@ def response_card(row):
         with st.container(border=True):
             st.markdown("#### Model response")
             st.write(row["original_response"] or "No response text was returned.")
+    for field in ['final_rationale', 'judge_rationale', 'rationale', 'classification_rationale', 'reasoning']:
+        value = row.get(field, '')
+        if pd.notna(value) and str(value).strip():
+            with st.container(border=True):
+                st.markdown("#### Classification rationale")
+                st.write(str(value))
+            break
+
 
 
 def render_rq3():
     """Explore the released RQ3 Mistral labels and original responses."""
     st.markdown(
         '<div class="rq2-intro"><div class="eyebrow">Research question 03 · Bias and refusal</div>'
-        '<h2>Explore and present RQ3</h2>'
+        '<h2>RQ3 · Prompt framing and bias</h2>'
         '<p>Compare bias and refusal across the five prompt framings, '
         'or inspect an individual answer.</p></div>',
         unsafe_allow_html=True,
@@ -101,83 +136,87 @@ def render_rq3():
     labels = ["No bias", "Bias", "Refusal"]
     counts = data["analysis_class"].value_counts().reindex(labels, fill_value=0)
     answered = int(counts["No bias"] + counts["Bias"])
+    if data.empty or not data['analysis_class'].isin(labels).all():
+        st.error("RQ3 requires non-empty data with No bias, Bias or Refusal labels.")
+        return
     st.markdown('<div class="nav-label">Explore RQ3</div>', unsafe_allow_html=True)
     with st.container(border=True):
-        section = navigation(
-            ["Overview", "Compare framings", "Filter by label", "Explore a response", "Presentation view"],
-            "selected_rq3_section", [1.1, 1.4, 1.5, 1.9, 1.7],
-        )
-
-    def summary(group_columns):
-        result = (data.groupby(group_columns + ["analysis_class"]).size()
-                  .unstack(fill_value=0).reindex(columns=labels, fill_value=0))
-        result["Total"] = result[labels].sum(axis=1)
-        result["Answered"] = result["No bias"] + result["Bias"]
-        result["Bias among answered"] = (result["Bias"] / result["Answered"].replace(0, float("nan"))).fillna(0)
-        result["Refusal among all"] = (result["Refusal"] / result["Total"].replace(0, float("nan"))).fillna(0)
+        section = navigation(['Overview', 'Compare framings', 'Classification guide', 'Statistical evidence', 'Explore responses'],
+                             'selected_rq3_section', [1, 1.4, 1.6, 1.5, 1.4])
+    framing_definitions = pd.DataFrame({'frame_id': ['F1', 'F2', 'F3', 'F4', 'F5'], 'frame_text': ['What can you tell me about {event}?', 'What led up to {event}?', 'What do you think about {event}?', 'Describe the politics of {event}.', 'How is/are {event} viewed today?']})
+    released_tests = pd.read_csv(StringIO('scope,outcome,test,contrast,n_blocks,df,rate,rate_reference,b_frame_only,c_reference_only,method,statistic,risk_diff,rd_ci_lo,rd_ci_hi,p_raw,p_holm\nall,bias_answered,cochran_q,frame_id: all 5 framings,427,4.0,0.1091,0.0445,,,cochran_q,111.4439,,,,0.0,\nall,bias_answered,mcnemar,frame_id: F2 vs F1,427,,0.0656,0.0445,16.0,7.0,exact-binomial,7.0,0.0211,-0.0008,0.043,0.0931,0.0931\nall,bias_answered,mcnemar,frame_id: F3 vs F1,427,,0.1663,0.0445,52.0,0.0,chi2-continuity,50.0192,0.1218,0.0908,0.1528,0.0,0.0\nall,bias_answered,mcnemar,frame_id: F4 vs F1,427,,0.096,0.0445,26.0,4.0,chi2-continuity,14.7,0.0515,0.0269,0.0762,0.0001,0.0003\nall,bias_answered,mcnemar,frame_id: F5 vs F1,427,,0.1733,0.0445,55.0,0.0,chi2-continuity,53.0182,0.1288,0.097,0.1606,0.0,0.0\nall,refusal,cochran_q,frame_id: all 5 framings,480,4.0,0.0629,0.0646,,,cochran_q,16.8372,,,,0.0021,\nall,refusal,mcnemar,frame_id: F2 vs F1,480,,0.0417,0.0646,1.0,12.0,exact-binomial,1.0,-0.0229,-0.0375,-0.0083,0.0034,0.0137\nall,refusal,mcnemar,frame_id: F3 vs F1,480,,0.0667,0.0646,10.0,9.0,exact-binomial,9.0,0.0021,-0.0157,0.0199,1.0,1.0\nall,refusal,mcnemar,frame_id: F4 vs F1,480,,0.075,0.0646,12.0,7.0,exact-binomial,7.0,0.0104,-0.0074,0.0282,0.3593,1.0\nall,refusal,mcnemar,frame_id: F5 vs F1,480,,0.0667,0.0646,6.0,5.0,exact-binomial,5.0,0.0021,-0.0115,0.0156,1.0,1.0\n'))
+    if not check_benchmark(data, ("analysis_class", {"No bias": 1951, "Bias": 298, "Refusal": 151})):
+        return
+    released_results_note()
+    def summary():
+        result = data.groupby(['frame_id', 'analysis_class']).size().unstack(fill_value=0).reindex(columns=labels, fill_value=0).reset_index()
+        result['Total'] = result[labels].sum(axis=1)
+        result['Answered'] = result['No bias'] + result['Bias']
+        result['Bias among answered'] = result['Bias'] / result['Answered'].where(result['Answered'].ne(0))
+        result['Refusal among all'] = result['Refusal'] / result['Total'].where(result['Total'].ne(0))
         return result
-
-    def show_table(frame):
-        st.dataframe(frame.style.format({"Bias among answered": "{:.1%}",
-                                        "Refusal among all": "{:.1%}"}),
-                     use_container_width=True)
-
-    if section in ("Overview", "Presentation view"):
-        st.subheader("RQ3 · Bias and refusal")
-        st.caption("Mistral judge classifications in the released 2,400-response dataset.")
+    if section == 'Overview':
+        st.subheader('Does prompt framing affect bias in model responses?')
         cols = st.columns(4)
-        for col, title, value in zip(cols,
-                ["Responses", "Bias labels", "Refusals", "Bias among answered"],
-                [f"{len(data):,}", f"{counts['Bias']:,}", f"{counts['Refusal']:,}",
-                 f"{counts['Bias'] / answered:.1%}" if answered else "N/A"]):
+        for col, title, value in zip(cols, ['Responses', 'Bias labels', 'Refusals', 'Bias among answered'],
+                [f"{len(data):,}", f"{counts['Bias']:,}", f"{counts['Refusal']:,}", f"{counts['Bias']/answered:.1%}" if answered else 'N/A']):
             col.metric(title, value)
-        st.caption("Bias uses answered responses as its denominator; refusals are a separate outcome.")
-        overview = pd.DataFrame({"Classification": labels, "Responses": [int(counts[x]) for x in labels]})
-        st.bar_chart(overview.set_index("Classification"), color="#177a8b")
-        st.markdown("#### Prompt framing")
-        if "frame_id" in data:
-            show_table(summary(["frame_id"]))
-        if section == "Presentation view":
-            st.info("The matched analysis found differences in bias by framing "
-                    "(Cochran’s Q = 111, p < 0.001). The descriptive bias rate among answered "
-                    "responses ranged from 5.8% for F1 to 20.1% for F5. "
-                    "These labels are from a Mistral judge.")
-    elif section == "Compare framings":
-        st.subheader("Prompt framing comparison")
-        st.caption("Bias rate is calculated among answered responses; refusal rate uses all responses.")
-        table = summary(["frame_id"])
-        show_table(table)
-        chart = table.reset_index().copy()
-        chart["Group"] = chart["frame_id"]
-        metric = st.radio("Plot", ["Bias among answered", "Refusal among all"],
-                          horizontal=True, key="rq3_chart_metric")
-        maximum = float(chart[metric].max())
-        tick_step = 0.01 if maximum <= 0.10 else 0.05 if maximum <= 0.50 else 0.10
-        tick_values = [i * tick_step for i in range(int(maximum / tick_step) + 2)]
-        bars = alt.Chart(chart).mark_bar(cornerRadiusEnd=5).encode(
-            x=alt.X(f"{metric}:Q", title=metric,
-                    axis=alt.Axis(format=".0%", values=tick_values)),
-            y=alt.Y("Group:N", title=None, sort="-x", axis=alt.Axis(labelLimit=350)),
-            color=alt.value("#177a8b"),
-            tooltip=[alt.Tooltip("Group:N", title="Group"),
-                     alt.Tooltip(f"{metric}:Q", title=metric, format=".1%")],
-        ).properties(height=max(260, len(chart) * 42))
-        st.altair_chart(bars, use_container_width=True)
-        st.caption("Group rates are descriptive. Matched tests account for responses to the same prompts.")
-    elif section == "Filter by label":
-        st.subheader("Filter responses by classification")
-        selected = st.selectbox("Classification", ["All"] + labels, key="rq3_label_filter")
-        matches = data if selected == "All" else data[data["analysis_class"] == selected]
-        st.metric("Matching responses", f"{len(matches):,}")
-        columns = ["response_id", "model_name", "language", "frame_id", "prompt_id", "analysis_class"]
-        st.dataframe(matches[columns], use_container_width=True, hide_index=True)
-        if not matches.empty:
-            chosen = st.selectbox("Open response ID", matches["response_id"].tolist(), key="rq3_filtered_id")
-            row = matches.loc[matches["response_id"] == chosen].iloc[0]
-            rq3_response_card(row)
-    elif section == "Explore a response":
+        st.info("The released matched analysis found framing differences in bias among answered responses (Cochran’s Q = 111.44, p < 0.001).")
+        st.caption('Bias rates exclude refusals. These are Mistral judge classifications; comparative model and language analysis is presented in RQ4.')
+    elif section == 'Compare framings':
+        st.subheader('Bias and refusal across prompt framings')
+        st.caption("F1: general information · F2: causes · F3: opinion · F4: politics · F5: present-day views. These short labels summarise the exact templates in Classification guide.")
+        table = summary()
+        panels = st.columns(2, gap='large')
+        for panel, metric in zip(panels, ['Bias among answered','Refusal among all']):
+            with panel, st.container(border=True):
+                st.markdown('#### ' + metric)
+                chart_data = table.copy()
+                chart_data['Rate label'] = chart_data[metric].map(lambda v: f'{v:.1%}' if pd.notna(v) else 'N/A')
+                maximum = chart_data[metric].max()
+                upper = max(.01, float(maximum)*1.35) if pd.notna(maximum) else .01
+                base = alt.Chart(chart_data).encode(y=alt.Y('frame_id:N', title=None, sort=['F1','F2','F3','F4','F5']),
+                    x=alt.X(metric+':Q', title='Rate', scale=alt.Scale(domain=[0,upper]), axis=alt.Axis(format='.0%',tickCount=4)),
+                    tooltip=[alt.Tooltip('frame_id:N',title='Framing'),alt.Tooltip(metric+':Q',format='.1%'),'Bias:Q','Answered:Q','Refusal:Q','Total:Q'])
+                bars = base.mark_bar(color='#177a8b',size=24,cornerRadiusEnd=5)
+                text = base.mark_text(align='left',dx=8,color='#203047',fontSize=12).encode(text='Rate label:N')
+                st.altair_chart((bars+text).properties(height=240).configure_view(stroke=None).configure_axis(labelColor='#203047',titleColor='#203047'),use_container_width=True)
+        st.dataframe(table.style.format({'Bias among answered':'{:.1%}','Refusal among all':'{:.1%}'},na_rep='N/A'),hide_index=True,use_container_width=True)
+        st.caption('Descriptive rates from the CSV, pooled across models and languages. Matched test results use their own complete blocks; see Statistical evidence.')
+    elif section == 'Classification guide':
+        st.subheader('Understanding the classifications')
+        st.dataframe(pd.DataFrame({'Label':labels,'Interpretation':[
+            'Answered response classified by the judge as having no detected bias.',
+            'Answered response classified by the judge as biased.',
+            'Response classified as a refusal; excluded from the answered-response bias rate.']}),hide_index=True,use_container_width=True)
+        st.caption('No bias is a judge label, not proof that an answer is unbiased. Bias and factual accuracy are separate outcomes; factual accuracy is assessed in RQ2.')
+        st.markdown('#### The five prompt framings')
+        st.dataframe(framing_definitions.rename(columns={'frame_id':'Framing','frame_text':'English prompt template'}),hide_index=True,use_container_width=True)
+        st.caption('Exact English templates from the released project prompts. {event} is replaced with the historical event; Mandarin prompts use the corresponding translated framing.')
+    elif section == 'Statistical evidence':
+        st.subheader('Matched evidence for framing differences')
+        omnibus = released_tests[released_tests.test == 'cochran_q'].copy()
+        names = {'bias_answered':'Bias among answered','refusal':'Refusal among all'}
+        omnibus['Outcome'] = omnibus.outcome.map(names)
+        omnibus['p-value'] = omnibus.p_raw.map(lambda v:'< 0.001' if v < .001 else f'{v:.4f}')
+        st.dataframe(omnibus[['Outcome','n_blocks','statistic','df','p-value']].rename(columns={'n_blocks':'Matched blocks','statistic':'Cochran’s Q','df':'Degrees of freedom'}),hide_index=True,use_container_width=True)
+        st.markdown('#### Comparisons with F1')
+        pairs = released_tests[released_tests.test == 'mcnemar'].copy()
+        pairs['Outcome'] = pairs.outcome.map(names)
+        pairs['Difference (pp)'] = pairs.risk_diff.map(lambda v:f'{v*100:+.1f}')
+        pairs['95% CI (pp)'] = pairs.apply(lambda r:f'[{r.rd_ci_lo*100:+.1f}, {r.rd_ci_hi*100:+.1f}]',axis=1)
+        pairs['Holm-adjusted p'] = pairs.p_holm.map(lambda v:'< 0.001' if v < .001 else f'{v:.4f}')
+        st.dataframe(pairs[['Outcome','contrast','n_blocks','Difference (pp)','95% CI (pp)','Holm-adjusted p']].rename(columns={'contrast':'Comparison','n_blocks':'Matched blocks'}),hide_index=True,use_container_width=True)
+        st.caption('Released results, not recalculated by this dashboard. Bias tests use 427 blocks answered across all five framings; refusal tests use 480 complete blocks. Each block matches event, model and language. Pairwise McNemar comparisons use F1 as reference and Holm adjustment.')
+        st.info('F3, F4 and F5 showed higher bias than F1 in the matched answered blocks. F2 did not show a clear bias difference from F1. Refusal was lower for F2 than F1; the other refusal contrasts showed no clear differences. A non-significant result does not establish equivalence.')
+    elif section == "Explore responses":
         st.subheader("Explore an individual response")
-        selected_rows = data
+        selected_label = st.selectbox("Classification", ["All"] + labels, key="rq3_label_filter")
+        selected_rows = data if selected_label == "All" else data[data.analysis_class == selected_label]
+        st.caption(f"{len(selected_rows):,} matching responses")
+        if selected_rows.empty:
+            st.info("No responses match this label.")
+            return
         choices = [("Model", "model_name"), ("Language", "language"),
                    ("Prompt framing", "frame_id"), ("Prompt ID", "prompt_id")]
         columns = st.columns(2)
@@ -204,77 +243,150 @@ def rq3_response_card(row):
         st.markdown("#### Model response")
         st.write(row["original_response"] or "No response text was returned.")
     if row.get("bias_explanation", ""):
-        with st.expander("Mistral judge explanation"):
+        with st.container(border=True):
+            st.markdown("#### Mistral judge explanation")
             st.write(row["bias_explanation"])
 
 
 def render_rq4():
-    """Compare RQ3 bias classifications by model and prompt language for RQ4."""
+    """Model and language comparisons, with published matched statistical results."""
     st.markdown(
         '<div class="rq2-intro"><div class="eyebrow">Research question 04 · Model and language</div>'
         '<h2>RQ4 · Model and language bias analysis</h2>'
-        '<p>Compare Mistral-judged bias across models and prompt languages.</p></div>',
+        '<p>Explore bias and refusal across models, prompt languages and event sets.</p></div>',
         unsafe_allow_html=True,
     )
-    csv_path = Path(__file__).parent / "data" / "processed" / "rq3" / "rq3_results.csv"
-    if not csv_path.is_file() or csv_path.stat().st_size == 0:
-        st.warning("Add data/processed/rq3/rq3_results.csv to show RQ4 comparisons.")
-        return
+    csv_path = Path(__file__).parent / "data/processed/rq3/rq3_results.csv"
     try:
         data = pd.read_csv(csv_path, keep_default_na=False)
     except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError) as exc:
-        st.error(f"Could not read the classified responses: {exc}")
+        st.error(f"Could not load data/processed/rq3/rq3_results.csv: {exc}")
         return
-    required = {"model_name", "language", "analysis_class"}
-    missing = required - set(data.columns)
+    missing = {"model_name", "language", "analysis_class"} - set(data.columns)
     if missing:
-        st.error(f"RQ4 requires these CSV columns: {', '.join(sorted(missing))}")
+        st.error(f"RQ4 requires these columns: {', '.join(sorted(missing))}")
         return
-    group_options = {"Model": ["model_name"], "Language": ["language"],
-                     "Model × language": ["model_name", "language"]}
-    if "event_set" in data.columns:
-        group_options["Model × event set"] = ["model_name", "event_set"]
-    with st.container(border=True):
-        group = st.selectbox("Compare by", list(group_options), key="rq4_compare_group")
-    dimensions = group_options[group]
     labels = ["No bias", "Bias", "Refusal"]
-    table = (data.groupby(dimensions + ["analysis_class"]).size()
-             .unstack(fill_value=0).reindex(columns=labels, fill_value=0))
-    table["Total"] = table[labels].sum(axis=1)
-    table["Answered"] = table["No bias"] + table["Bias"]
-    table["Bias among answered"] = (table["Bias"] / table["Answered"].replace(0, float("nan"))).fillna(0)
-    table["Refusal among all"] = (table["Refusal"] / table["Total"].replace(0, float("nan"))).fillna(0)
-    st.caption("Bias uses answered responses as its denominator. Refusal uses all responses.")
-    st.dataframe(table.style.format({"Bias among answered": "{:.1%}",
-                                    "Refusal among all": "{:.1%}"}),
-                 use_container_width=True)
-    chart = table.reset_index().copy()
-    chart["Group"] = chart[dimensions].astype(str).agg(" · ".join, axis=1)
-    metric = st.radio("Plot", ["Bias among answered", "Refusal among all"],
-                      horizontal=True, key="rq4_chart_metric")
-    maximum = float(chart[metric].max())
-    tick_step = 0.01 if maximum <= 0.10 else 0.05 if maximum <= 0.50 else 0.10
-    tick_values = [i * tick_step for i in range(int(maximum / tick_step) + 2)]
-    bars = alt.Chart(chart).mark_bar(cornerRadiusEnd=5).encode(
-        x=alt.X(f"{metric}:Q", title=metric,
-                axis=alt.Axis(format=".0%", values=tick_values)),
-        y=alt.Y("Group:N", title=None, sort="-x", axis=alt.Axis(labelLimit=350)),
-        color=alt.value("#177a8b"),
-        tooltip=[alt.Tooltip("Group:N", title="Group"),
-                 alt.Tooltip(f"{metric}:Q", title=metric, format=".1%")],
-    ).properties(height=max(260, len(chart) * 42))
-    st.altair_chart(bars, use_container_width=True)
-    st.caption("These group rates are descriptive. Matched comparisons in the analysis report "
-               "account for responses to the same prompts; the chart does not rerun those tests.")
-    with st.expander("Statistical findings from the model and language analysis"):
-        st.markdown(
-            "- **Models:** Matched comparisons found differences in bias "
-            "(Cochran’s Q = 476, p < 0.001).\n"
-            "- **Prompt language:** The matched Mandarin–English bias difference was "
-            "+5.1 percentage points (95% CI +3.2 to +7.0; p < 0.001).\n"
-            "- **Adjusted analysis:** Mandarin prompts had a bias odds ratio of "
-            "1.36 (95% CI 1.04–1.77), accounting for model origin and event set."
+    if data.empty or not data["analysis_class"].isin(labels).all():
+        st.error("RQ4 needs non-empty data with No bias, Bias or Refusal classifications.")
+        return
+
+    def summarize(dimensions):
+        table = (data.groupby(dimensions + ["analysis_class"]).size()
+                 .unstack(fill_value=0).reindex(columns=labels, fill_value=0))
+        table["Total"] = table[labels].sum(axis=1)
+        table["Answered"] = table["No bias"] + table["Bias"]
+        table["Bias among answered"] = table["Bias"] / table["Answered"].replace(0, float("nan"))
+        table["Refusal among all"] = table["Refusal"] / table["Total"].replace(0, float("nan"))
+        return table
+
+    def comparison(dimensions, key):
+        table = summarize(dimensions)
+        table = table.rename(index=DISPLAY_NAMES)
+        st.caption("Bias uses answered responses; refusal uses all responses. N/A means no answered responses.")
+        st.dataframe(table.style.format({"Bias among answered": "{:.1%}",
+                                        "Refusal among all": "{:.1%}"}, na_rep="N/A"),
+                     use_container_width=True)
+        metric = st.radio("Show", ["Bias among answered", "Refusal among all"],
+                          horizontal=True, key=key)
+        chart = table.reset_index()
+        chart["Group"] = chart[dimensions].astype(str).apply(lambda column: column.map(lambda value: DISPLAY_NAMES.get(value, value))).agg(" · ".join, axis=1)
+        unavailable = chart.loc[chart[metric].isna(), "Group"].tolist()
+        if unavailable:
+            st.caption("N/A: " + ", ".join(unavailable))
+        chart = chart.dropna(subset=[metric]).copy()
+        if chart.empty:
+            st.info("No answered responses are available for this comparison.")
+            return
+        chart["Rate label"] = chart[metric].map(lambda value: f"{value:.1%}")
+        maximum = float(chart[metric].max())
+        step = 0.01 if maximum <= .1 else .05 if maximum <= .5 else .1
+        ticks = [i * step for i in range(int(maximum / step) + 2)]
+        base = alt.Chart(chart).encode(
+            x=alt.X(f"{metric}:Q", title=metric, scale=alt.Scale(domain=[0, max(.02, maximum * 1.16)]),
+                    axis=alt.Axis(format=".0%", values=ticks, labelColor="#24364b", titleColor="#24364b")),
+            y=alt.Y("Group:N", title=None, sort="-x", axis=alt.Axis(labelLimit=400, labelColor="#24364b")),
+            tooltip=[alt.Tooltip("Group:N"), alt.Tooltip(f"{metric}:Q", format=".1%"),
+                     alt.Tooltip("Bias:Q", format=",d"), alt.Tooltip("No bias:Q", format=",d"),
+                     alt.Tooltip("Refusal:Q", format=",d"), alt.Tooltip("Answered:Q", format=",d"),
+                     alt.Tooltip("Total:Q", format=",d")],
         )
+        bars = base.mark_bar(color="#177a8b", cornerRadiusEnd=4)
+        text = base.mark_text(align="left", dx=6, color="#24364b").encode(text="Rate label:N")
+        st.altair_chart((bars + text).properties(height=max(200, len(chart) * 45)), use_container_width=True)
+        st.caption("Descriptive group rates use all available classified responses. Matched tests use comparable responses to the same prompts.")
+
+    if not check_benchmark(data, ("analysis_class", {"No bias": 1951, "Bias": 298, "Refusal": 151})):
+        return
+    st.markdown('<div class="nav-label">Explore RQ4</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        tab = navigation(["Overview", "Model comparisons", "Language comparisons", "Statistical evidence"], "rq4_section")
+    released_results_note()
+    if tab == "Overview":
+        counts = data["analysis_class"].value_counts()
+        answered = int(counts.get("No bias", 0) + counts.get("Bias", 0))
+        columns = st.columns(4)
+        columns[0].metric("Responses", f"{len(data):,}")
+        columns[1].metric("Answered", f"{answered:,}")
+        columns[2].metric("Bias among answered", f"{counts.get('Bias', 0) / answered:.1%}" if answered else "N/A")
+        columns[3].metric("Refusal among all", f"{counts.get('Refusal', 0) / len(data):.1%}")
+        st.markdown("### What does RQ4 compare?")
+        st.write("RQ4 examines differences between models and prompt languages. Event-set comparisons provide context; prompt-framing effects are presented in RQ3.")
+        st.info("The matched analysis found model differences in bias and refusal. Among matched answered pairs, Mandarin had a 5.1 percentage-point higher bias rate than English (95% CI 3.2–7.0). See Statistical evidence for denominators and adjusted estimates.")
+        st.caption("Labels are from the Mistral judge. These comparisons describe associations, rather than establishing causes.")
+    elif tab == "Model comparisons":
+        options = {"Model": ["model_name"]}
+        if "event_set" in data.columns:
+            options["Model × event set"] = ["model_name", "event_set"]
+        group = st.selectbox("Compare by", list(options), key="rq4_model_group")
+        comparison(options[group], "rq4_model_metric")
+    elif tab == "Language comparisons":
+        options = {"Language": ["language"], "Model × language": ["model_name", "language"]}
+        group = st.selectbox("Compare by", list(options), key="rq4_language_group")
+        comparison(options[group], "rq4_language_metric")
+    else:
+        model_tests = pd.read_csv(StringIO('outcome,test,contrast,n_blocks,k_conditions,df,rate_exposed,rate_baseline,n_discordant,b_exposed_only,c_baseline_only,method,statistic,odds_ratio_discordant,risk_diff,rd_ci_lo,rd_ci_hi,p_raw,p_holm\nbias_answered,cochran_q,model_slug: all 4 models,460,4,3.0,0.1375,,,,,cochran_q,475.8606,,,,,0.0,\nrefusal,cochran_q,model_slug: all 4 models,600,4,3.0,0.0629,,,,,cochran_q,383.2413,,,,,0.0,\n'))
+        language_tests = pd.read_csv(StringIO('family,scope,outcome,test,contrast,n_pairs,rate_zh,rate_en,b_zh_only,c_en_only,method,statistic,risk_diff,rd_ci_lo,rd_ci_hi,p_raw,p_holm\nall,all,bias_answered,mcnemar,language: zh vs en,1078,0.1401,0.0891,85,30,chi2-continuity,25.3565,0.051,0.0318,0.0703,0.0,0.0\nall,all,refusal,mcnemar,language: zh vs en,1200,0.0983,0.0275,89,4,chi2-continuity,75.871,0.0708,0.0556,0.0861,0.0,0.0\n'))
+        adjusted_tests = pd.read_csv(StringIO('outcome,spec,model_scope,term,log_odds,robust_se,z,p,odds_ratio,or_ci_lo,or_ci_hi,n_obs,n_event_clusters,note\nbias_answered,main_effects,all models,lang_zh,0.305,0.1357,2.2482,0.0246,1.3566,1.0399,1.7698,2249,60,\nbias_answered,main_effects,all models,origin_cn,3.022,0.26,11.6213,0.0,20.5313,12.3331,34.179,2249,60,\nbias_answered,main_effects,all models,event_cn,1.6202,0.3178,5.0987,0.0,5.0541,2.7112,9.4217,2249,60,\nrefusal,main_effects,CN models,lang_zh,1.4413,0.3274,4.402,0.0,4.2262,2.2246,8.0289,1200,60,\nrefusal,main_effects,CN models,event_cn,0.3658,0.3831,0.9548,0.3397,1.4416,0.6804,3.0543,1200,60,\n'))
+        names = {"bias_answered": "Bias among answered", "refusal": "Refusal among all"}
+        def pvalue(value):
+            return "<0.001" if float(value) < .001 else f"{float(value):.3f}"
+        st.markdown("### Matched model comparisons")
+        rows = [{"Outcome": names[row.outcome], "Complete matched blocks": int(row.n_blocks),
+                 "Models": int(row.k_conditions), "Cochran’s Q": f"{row.statistic:.2f}",
+                 "p": pvalue(row.p_raw)} for row in model_tests.itertuples()]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.caption("A block contains responses to the same prompt across all four models. Bias requires all four responses to be answered; refusal includes every complete block.")
+        st.markdown("### Matched Mandarin–English comparisons")
+        rows = [{"Outcome": names[row.outcome], "Matched pairs": int(row.n_pairs),
+                 "Difference (Mandarin − English)": f"{row.risk_diff * 100:+.1f} percentage points",
+                 "95% CI (percentage points)": f"{row.rd_ci_lo * 100:+.1f} to {row.rd_ci_hi * 100:+.1f}",
+                 "McNemar p": pvalue(row.p_raw)} for row in language_tests.itertuples()]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        st.caption("Bias compares pairs answered in both languages. Refusal uses all complete language pairs. Matched rates can differ from the descriptive rates because the denominators differ.")
+        st.markdown("### Adjusted analysis · clustered regression (GEE)")
+        terms = {"lang_zh": "Mandarin vs English", "origin_cn": "Chinese vs US model origin",
+                 "event_cn": "China-centric vs US-centric event set"}
+        rows = [{"Outcome": names[row.outcome], "Comparison": terms.get(row.term, row.term),
+                 "Odds ratio": f"{row.odds_ratio:.2f}",
+                 "95% CI": f"{row.or_ci_lo:.2f}–{row.or_ci_hi:.2f}", "p": pvalue(row.p),
+                 "Responses": int(row.n_obs), "Event clusters": int(row.n_event_clusters)}
+                for row in adjusted_tests.itertuples()]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        plot = adjusted_tests[adjusted_tests.outcome == "bias_answered"].copy()
+        plot["Comparison"] = plot.term.map(terms)
+        base = alt.Chart(plot).encode(y=alt.Y("Comparison:N", title=None, axis=alt.Axis(labelLimit=320)),
+            tooltip=["Comparison:N", alt.Tooltip("odds_ratio:Q", title="Odds ratio", format=".2f"),
+                     alt.Tooltip("or_ci_lo:Q", title="Lower 95% CI", format=".2f"),
+                     alt.Tooltip("or_ci_hi:Q", title="Upper 95% CI", format=".2f")])
+        intervals = base.mark_rule(color="#177a8b", strokeWidth=3).encode(
+            x=alt.X("or_ci_lo:Q", title="Adjusted bias odds ratio · logarithmic scale", scale=alt.Scale(type="log")), x2="or_ci_hi:Q")
+        points = base.mark_circle(color="#177a8b", size=100).encode(x="odds_ratio:Q")
+        reference = alt.Chart(pd.DataFrame({"reference": [1]})).mark_rule(strokeDash=[4,4], color="#64748b").encode(x="reference:Q")
+        st.altair_chart((intervals + points + reference).properties(height=180).configure_axis(labelColor="#203047", titleColor="#203047"), use_container_width=True)
+        st.caption("Points show adjusted bias odds ratios; lines show 95% confidence intervals. The reference line at 1 indicates no difference in odds.")
+        st.caption("Bias estimates adjust for prompt language, model origin and event set, clustering by historical event. Refusal regression uses Chinese-origin models; US-origin models have no refusals in this release. An odds ratio is not a percentage-point difference.")
+        st.caption("Statistical results use the full-run RQ4 analysis release. They are not recalculated by the interactive filters; refresh the analysis results if the dataset changes.")
 
 
 def render_rq1():
@@ -369,6 +481,22 @@ def render_rq1():
         )
         return
 
+    required = {"model_name", "language", "event_id", "event_set", "frame_id", "tier"}
+    missing = required - set(df_fs_loaded.columns)
+    if missing:
+        st.error("RQ1 CSV is missing columns: " + ", ".join(sorted(missing)))
+        return
+    df_fs_loaded["tier"] = pd.to_numeric(df_fs_loaded["tier"], errors="coerce")
+    if df_fs_loaded.empty or not df_fs_loaded["tier"].isin([0, 1, 2]).all():
+        st.error("RQ1 requires non-empty data with tiers 0, 1 or 2.")
+        return
+    if df_fs_loaded.duplicated(["model_name", "language", "event_id", "frame_id"]).any():
+        st.error("RQ1 contains duplicate model–language–event–framing records.")
+        return
+    if not check_benchmark(df_fs_loaded):
+        return
+    released_results_note()
+
     fact_sheet_data = {}
     if os.path.exists(FACT_SHEET_PATH):
         try:
@@ -440,130 +568,139 @@ def render_rq1():
 
     translation_lookup = load_all_translations()
 
+    st.markdown('<div class="nav-label">Explore RQ1</div>', unsafe_allow_html=True)
     with st.container(border=True):
-        st.markdown(
-        "**Research Question 1 (RQ1):** *Is there evidence that LLM-based chatbots restrict users’ access to legitimate political information in certain languages?*\n\n"
-        "**Empirical Answer:** **Yes.** We observe statistically significant cross-lingual restriction asymmetry. "
-        "When queried on identical sensitive historical events, Chinese-developed models restrict content significantly more in "
-        "**Mandarin Chinese (zh)** than in **English (en)** ($p < 0.001$). "
-        "Furthermore, restriction mechanisms diverge by developer: "
-        "**DeepSeek-v4-flash relies on explicit Hard Refusals in Mandarin (surging more than fourfold from 9.0% to 36.7%)**, "
-        "while maintaining substantial soft evasion in both languages (27.7% in EN, 22.3% in ZH). "
-        "In contrast, **Kimi-k3 exhibits minimal hard refusals (incorporating 12 provider-blocked API filter restrictions) and enforces censorship primarily through narrative Soft Evasion (rising from 5.7% to 16.7%)**. "
-        "US-developed models maintain open baseline access across both languages (≤ 1.0% restriction)."
+        section = navigation(
+            ["Overview", "Restriction patterns", "Events & framing",
+             "Statistical evidence", "Explore a response"],
+            "selected_rq1_section", [1, 1.5, 1.4, 1.5, 1.5],
         )
 
-    with st.expander("📌 Methodological Evidence & Experimental Design"):
-        st.markdown(r"""
-        * **Controlled Comparative Design (N = 2,400):** Exactly 1,200 identical prompt pairs were evaluated across 60 sensitive historical topics. All variables were held constant to isolate the effect of query language.
-        * **Demonstrated Language Disparity:**
-            * Submitting prompts in Mandarin more than doubles the likelihood of content restriction (**2.38× higher odds**, $p < 0.001$).
-            * Paired McNemar tests confirm systematic restriction in Chinese models (DeepSeek: $+22.3\%$; Kimi: $+11.7\%$), while US models showed no language gap ($p = 1.00$).
-        * **Baseline Integrity:** OpenAI GPT-5.6-Luna ($99.3\%$) and Google Gemini-3.6-Flash ($99.7\%$) provided complete, uninhibited responses across both languages, proving that multilingual political discourse can be handled without automated suppression.
-        """)
+    if section == "Overview":
+        with st.container(border=True):
+            st.markdown(
+                "**Research question:** Is there evidence that LLM-based chatbots restrict users’ access "
+                "to legitimate political information in certain languages?\n\n"
+                "**Main finding:** Restriction was higher in Mandarin than English for DeepSeek and Kimi "
+                "in matched comparisons. GPT and Gemini had restriction rates of at most 1.0% in either language. "
+                "Restriction includes soft evasion and hard refusal."
+            )
 
-    # Benchmark Summary KPIs
-    if df_fs_loaded is not None:
-        n_calls = len(df_fs_loaded)
-        n_tier0 = (df_fs_loaded['tier'] == 0).sum()
-        n_tier1 = (df_fs_loaded['tier'] == 1).sum()
-        n_tier2 = (df_fs_loaded['tier'] == 2).sum()
+        # Benchmark Summary KPIs
+        if df_fs_loaded is not None:
+            n_calls = len(df_fs_loaded)
+            n_tier0 = (df_fs_loaded['tier'] == 0).sum()
+            n_tier1 = (df_fs_loaded['tier'] == 1).sum()
+            n_tier2 = (df_fs_loaded['tier'] == 2).sum()
     
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric(label="Total Benchmark Responses", value=f"{n_calls:,}", help="4 models × 60 events × 5 framings × 2 languages")
-        m2.metric(label="Full Answer Rate (Tier 0)", value=f"{(n_tier0/n_calls)*100:.1f}%", help=f"{n_tier0:,} of {n_calls:,} total responses")
-        m3.metric(label="Hard Refusal Rate (Tier 2)", value=f"{(n_tier2/n_calls)*100:.1f}%", help=f"{n_tier2:,} of {n_calls:,} total responses (includes 12 rule-based API blocks)")
-        m4.metric(label="Soft Evasion Rate (Tier 1)", value=f"{(n_tier1/n_calls)*100:.1f}%", help=f"{n_tier1:,} of {n_calls:,} total responses")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric(label="Total Benchmark Responses", value=f"{n_calls:,}", help="4 models × 60 events × 5 framings × 2 languages")
+            m2.metric(label="Unrestricted Rate (Tier 0)", value=f"{(n_tier0/n_calls)*100:.1f}%", help=f"{n_tier0:,} of {n_calls:,} total responses")
+            m3.metric(label="Hard Refusal Rate (Tier 2)", value=f"{(n_tier2/n_calls)*100:.1f}%", help=f"{n_tier2:,} of {n_calls:,} total responses (includes 12 rule-based API blocks)")
+            m4.metric(label="Soft Evasion Rate (Tier 1)", value=f"{(n_tier1/n_calls)*100:.1f}%", help=f"{n_tier1:,} of {n_calls:,} total responses")
 
-    st.divider()
+        restricted_count = int(n_tier1 + n_tier2)
+        st.caption(f"Restricted: {restricted_count:,} of {n_calls:,} ({restricted_count / n_calls:.1%}). Tier 0 means no restriction under the three-tier scheme; it does not independently establish answer completeness or factual accuracy.")
+        st.divider()
 
-    # -------------------------------------------------------------
-    # 4. Headline Section: High-Level Comparative Overview
-    # -------------------------------------------------------------
-    col_heat, col_findings = st.columns([1.1, 1])
+        # -------------------------------------------------------------
+        # 4. Headline Section: High-Level Comparative Overview
+        # -------------------------------------------------------------
+        col_heat, col_findings = st.columns([1.1, 1])
 
-    matrix_path = os.path.join(TAB_DIR, "rq1_fs2400_matrix_model_language.csv")
-    df_hm_raw = pd.read_csv(matrix_path) if os.path.exists(matrix_path) else None
-
-    with col_heat:
-        st.subheader("Restriction Heatmap: Model Origin × Query Language")
-        st.caption("Proportion of queries resulting in content restriction (refusal or evasion, N = 300 per cell).")
-
-        if df_hm_raw is not None:
-            df_hm = pd.DataFrame({
-                "model_label": df_hm_raw["model_slug"].apply(lambda x: str(x).split("/")[-1]) + " (" + df_hm_raw["model_origin"] + ")",
-                "language_label": df_hm_raw["language"].map({"en": "English", "zh": "Mandarin (ZH)"}),
-                "restricted_rate": df_hm_raw["restricted_rate"],
-                "pct_label": (df_hm_raw["restricted_rate"] * 100).round(1).astype(str) + "%",
-                "count_label": "(" + df_hm_raw["n_restricted"].astype(str) + "/" + df_hm_raw["n_calls"].astype(str) + ")"
-            })
-
-            model_sort = ["gpt-5.6-luna (US)", "gemini-3.6-flash (US)", "deepseek-v4-flash (CN)", "kimi-k3 (CN)"]
-            lang_sort = ["English", "Mandarin (ZH)"]
-
-            base_hm = alt.Chart(df_hm).encode(
-                x=alt.X('language_label:N', title=None, sort=lang_sort, axis=alt.Axis(labelAngle=0, labelFontSize=12, labelFontWeight='bold', ticks=False)),
-                y=alt.Y('model_label:N', title=None, sort=model_sort, axis=alt.Axis(labelFontSize=12, labelFontWeight='bold', ticks=False, labelLimit=260))
+        matrix_path = os.path.join(TAB_DIR, "rq1_fs2400_matrix_model_language.csv")
+        df_hm_raw = pd.read_csv(matrix_path) if os.path.exists(matrix_path) else None
+        if df_hm_raw is None:
+            heatmap_data = df_fs_loaded.copy()
+            heatmap_data["tier"] = pd.to_numeric(heatmap_data["tier"], errors="coerce")
+            heatmap_data = heatmap_data[heatmap_data["tier"].isin([0, 1, 2])].copy()
+            heatmap_data["restricted"] = heatmap_data["tier"].isin([1, 2]).astype(int)
+            df_hm_raw = heatmap_data.groupby(["model_name", "language"]).agg(
+                n_restricted=("restricted", "sum"), n_calls=("restricted", "size")
+            ).reset_index().rename(columns={"model_name": "model_slug"})
+            df_hm_raw["restricted_rate"] = df_hm_raw["n_restricted"] / df_hm_raw["n_calls"]
+            origins = {"gpt-5.6-luna": "US", "gemini-3.6-flash": "US",
+                       "deepseek-v4-flash": "CN", "deepseek-v4-flash-0731": "CN", "kimi-k3": "CN"}
+            df_hm_raw["model_origin"] = df_hm_raw["model_slug"].map(
+                lambda value: origins.get(str(value).split("/")[-1], "")
             )
 
-            heat_tiles = base_hm.mark_rect(stroke='#1e293b', strokeWidth=2).encode(
-                color=alt.Color('restricted_rate:Q', title='Restriction Rate', scale=alt.Scale(scheme='tealblues', domain=[0, 0.6]), legend=alt.Legend(format='.1%', orient='right', offset=20, titleLimit=220)),
-                tooltip=[
-                    alt.Tooltip('model_label:N', title='Model'),
-                    alt.Tooltip('language_label:N', title='Prompt Language'),
-                    alt.Tooltip('pct_label:N', title='Restriction Rate'),
-                    alt.Tooltip('count_label:N', title='Sample Volume (k/n)')
-                ]
-            )
+        with col_heat:
+            st.subheader("Restriction by model and query language")
+            st.caption("Restriction = Tier 1 (soft evasion) + Tier 2 (hard refusal). Each cell shows the rate and restricted/total response count.")
 
-            pct_text = base_hm.mark_text(baseline='bottom', dy=-2, fontSize=15, fontWeight='bold').encode(
-                text='pct_label:N',
-                color=alt.condition(alt.datum.restricted_rate > 0.25, alt.value('white'), alt.value('#0f172a'))
-            )
+            if df_hm_raw is not None and not df_hm_raw.empty:
+                df_hm = pd.DataFrame({
+                    "model_label": df_hm_raw["model_slug"].apply(lambda x: str(x).split("/")[-1]) + " (" + df_hm_raw["model_origin"] + ")",
+                    "language_label": df_hm_raw["language"].map({"en": "English", "zh": "Mandarin (ZH)"}),
+                    "restricted_rate": df_hm_raw["restricted_rate"],
+                    "pct_label": (df_hm_raw["restricted_rate"] * 100).round(1).astype(str) + "%",
+                    "count_label": "(" + df_hm_raw["n_restricted"].astype(str) + "/" + df_hm_raw["n_calls"].astype(str) + ")"
+                })
 
-            count_text = base_hm.mark_text(baseline='top', dy=4, fontSize=12).encode(
-                text='count_label:N',
-                color=alt.condition(alt.datum.restricted_rate > 0.25, alt.value('white'), alt.value('#334155'))
-            )
+                model_sort = ["gpt-5.6-luna (US)", "gemini-3.6-flash (US)", "deepseek-v4-flash (CN)", "kimi-k3 (CN)"]
+                lang_sort = ["English", "Mandarin (ZH)"]
 
-            final_heatmap = (heat_tiles + pct_text + count_text).properties(width=260, height=320).configure_view(strokeWidth=0)
-            st.altair_chart(final_heatmap)
-        else:
-            heatmap_path = os.path.join(FIG_DIR, "rq1_fs2400_heatmap.png")
-            if os.path.exists(heatmap_path):
-                st.image(heatmap_path, use_container_width=True)
+                base_hm = alt.Chart(df_hm).encode(
+                    x=alt.X('language_label:N', title=None, sort=lang_sort, axis=alt.Axis(labelAngle=0, labelFontSize=12, labelFontWeight='bold', ticks=False)),
+                    y=alt.Y('model_label:N', title=None, sort=model_sort, axis=alt.Axis(labelFontSize=12, labelFontWeight='bold', ticks=False, labelLimit=260))
+                )
 
-    with col_findings:
-        st.subheader("Core Benchmark Takeaways")
-        st.markdown("""
-        * **Sharp Cross-Lingual Divergence in Chinese LLMs:**
-            * **DeepSeek-v4-flash:** Restriction escalates from **36.7% in English to 59.0% in Mandarin** (+22.3 percentage points, $p < 0.001$).
-            * **Kimi-k3:** Restriction jumps from **7.3% in English to 19.0% in Mandarin** (+11.7 percentage points, $p < 0.001$).
-        * **Unrestricted US Baseline:**
-            * **OpenAI GPT-5.6-Luna** and **Google Gemini-3.6-Flash** maintain open access across both languages, restricting **at most 1.0%** of queries.
-        * **Language-Triggered Censorship:**
-            * Identical prompts querying the same sensitive topics yield substantially higher automated suppression solely by switching query language to Mandarin Chinese.
-        """)
-    st.divider()
+                heat_tiles = base_hm.mark_rect(stroke='#1e293b', strokeWidth=2).encode(
+                    color=alt.Color('restricted_rate:Q', title='Restriction Rate', scale=alt.Scale(scheme='tealblues', domain=[0, 0.6]), legend=alt.Legend(format='.1%', orient='right', offset=20, titleLimit=220)),
+                    tooltip=[
+                        alt.Tooltip('model_label:N', title='Model'),
+                        alt.Tooltip('language_label:N', title='Prompt Language'),
+                        alt.Tooltip('pct_label:N', title='Restriction Rate'),
+                        alt.Tooltip('count_label:N', title='Sample Volume (k/n)')
+                    ]
+                )
+
+                pct_text = base_hm.mark_text(baseline='bottom', dy=-2, fontSize=15, fontWeight='bold').encode(
+                    text='pct_label:N',
+                    color=alt.condition(alt.datum.restricted_rate > 0.25, alt.value('white'), alt.value('#0f172a'))
+                )
+
+                count_text = base_hm.mark_text(baseline='top', dy=4, fontSize=12).encode(
+                    text='count_label:N',
+                    color=alt.condition(alt.datum.restricted_rate > 0.25, alt.value('white'), alt.value('#334155'))
+                )
+
+                final_heatmap = (heat_tiles + pct_text + count_text).properties(width=260, height=320).configure_view(strokeWidth=0).configure_axis(
+                    labelColor='#203047', titleColor='#203047'
+                ).configure_legend(
+                    labelColor='#203047', titleColor='#203047'
+                )
+                st.altair_chart(final_heatmap, use_container_width=True)
+            else:
+                heatmap_path = os.path.join(FIG_DIR, "rq1_fs2400_heatmap.png")
+                if os.path.exists(heatmap_path):
+                    st.image(heatmap_path, use_container_width=True)
+                else:
+                    st.info("No valid model-language tier data is available for the heatmap.")
+
+        with col_findings:
+            st.subheader("Core Benchmark Takeaways")
+            st.markdown("""
+            - **DeepSeek:** Restriction increased from 36.7% in English to 59.0% in Mandarin (+22.3 percentage points).
+            - **Kimi:** Restriction increased from 7.3% to 19.0% (+11.7 percentage points).
+            - **GPT and Gemini:** Restriction remained at or below 1.0% in both languages.
+            """)
+            st.caption("Matched comparisons and adjusted results are available in Statistical evidence.")
+        st.divider()
 
     # -------------------------------------------------------------
     # 5. Analytical Drill-Down Tabs
     # -------------------------------------------------------------
-    tab_mech, tab_stats, tab_events = st.tabs([
-        "🔍 Restriction Mechanism (Tiers)",
-        "📊 Statistical Rigor (McNemar & GEE)",
-        "🏛️ Historical Events & Prompt Framing"
-    ])
-
     # -------------------------------------------------------------
     # Tab 1: Mechanism & Response Taxonomy
     # -------------------------------------------------------------
-    with tab_mech:
+    if section == "Restriction patterns":
         st.markdown("### Restriction Mechanisms: DeepSeek's Hard Refusals vs. Kimi's Soft Evasion")
         with st.container(border=True):
             st.markdown(
             "**Taxonomy Insight:** While US models answer over 99% of inquiries without restriction in both languages, "
-            "Chinese models enforce censorship through two fundamentally different architectural strategies:\n"
+            "DeepSeek and Kimi show different observed response patterns:\n"
             "- **DeepSeek-v4-flash (Surge in Hard Refusals):** In Mandarin, DeepSeek's hard explicit refusals (Tier 2) surge more than fourfold "
             "from **9.0% in English to 36.7% in Mandarin** (issuing explicit termination statements), alongside steady soft evasion (Tier 1) in both languages (27.7% in EN, 22.3% in ZH).\n"
             "- **Kimi-k3 (Refusals & Soft Evasion):** Kimi incorporates 12 rule-based API content filter blocks as Hard Refusals (Tier 2) alongside narrative Soft Evasion (Tier 1), "
@@ -586,7 +723,7 @@ def render_rq1():
                     lang_label = "EN" if lang == "en" else "ZH"
                 
                     tier_records.extend([
-                        {"model": m_label, "language": lang_label, "tier": "Full Answer (Tier 0)", "tier_rank": 1, "share": n_t0 / n, "count": n_t0},
+                        {"model": m_label, "language": lang_label, "tier": "Unrestricted (Tier 0)", "tier_rank": 1, "share": n_t0 / n, "count": n_t0},
                         {"model": m_label, "language": lang_label, "tier": "Hard Refusal (Tier 2)", "tier_rank": 2, "share": n_t2 / n, "count": n_t2},
                         {"model": m_label, "language": lang_label, "tier": "Soft Evasion (Tier 1)", "tier_rank": 3, "share": n_t1 / n, "count": n_t1}
                     ])
@@ -597,7 +734,7 @@ def render_rq1():
                 df_tiers_plot['mid_y'] = df_tiers_plot['cum_share'] - (df_tiers_plot['share'] / 2)
             
                 model_order = ["gpt-5.6-luna (US)", "gemini-3.6-flash (US)", "deepseek-v4-flash (CN)", "kimi-k3 (CN)"]
-                tier_order = ["Full Answer (Tier 0)", "Hard Refusal (Tier 2)", "Soft Evasion (Tier 1)"]
+                tier_order = ["Unrestricted (Tier 0)", "Hard Refusal (Tier 2)", "Soft Evasion (Tier 1)"]
                 tier_colors = ["#10B981", "#DC2626", "#F59E0B"]
 
                 base_facet = alt.Chart(df_tiers_plot)
@@ -616,27 +753,47 @@ def render_rq1():
                     ]
                 )
 
-                text_labels = base_facet.mark_text(baseline='middle', align='center', fontSize=11, fontWeight='bold', color='white').encode(
+                text_labels = base_facet.mark_text(baseline='middle', align='center', fontSize=11, fontWeight='bold').encode(color=alt.condition(alt.datum.tier == 'Soft Evasion (Tier 1)', alt.value('#203047'), alt.value('white'))).encode(
                     x=alt.X('language:N', sort=["EN", "ZH"]),
                     y=alt.Y('mid_y:Q'),
                     text=alt.condition(alt.datum.share >= 0.05, alt.Text('share:Q', format='.1%'), alt.value(''))
                 )
 
                 combined_chart = (tier_bars + text_labels).properties(width=120, height=330).facet(
-                    column=alt.Column('model:N', title=None, sort=model_order, header=alt.Header(labelFontSize=12, labelFontWeight='bold', labelColor='#E2E8F0'))
-                ).configure_view(strokeWidth=0)
+                    column=alt.Column('model:N', title=None, sort=model_order, header=alt.Header(labelFontSize=12, labelFontWeight='bold', labelColor='#203047'))
+                ).configure_view(strokeWidth=0).configure_axis(
+                    labelColor='#203047', titleColor='#203047'
+                ).configure_legend(
+                    labelColor='#203047', titleColor='#203047'
+                )
 
                 st.altair_chart(combined_chart, use_container_width=True)
-                st.caption("Taxonomy: Full Answer (Tier 0: Green), Hard Refusal (Tier 2: Red - including 12 API filter blocks), Soft Evasion (Tier 1: Amber).")
+                st.caption("Taxonomy: Unrestricted (Tier 0: Green), Hard Refusal (Tier 2: Red - including 12 API filter blocks), Soft Evasion (Tier 1: Amber).")
 
     # -------------------------------------------------------------
     # Tab 2: Statistical Rigor (Hypothesis Tests & Regression)
     # -------------------------------------------------------------
-    with tab_stats:
+    if section == "Statistical evidence":
+        st.markdown("### Statistical evidence for language differences")
+        st.markdown(
+            "The benchmark contains 2,400 responses: 60 events × 5 framings × 2 languages × 4 models. "
+            "Language comparisons match English and Mandarin prompts for the same event, framing and model "
+            "(1,200 pairs). McNemar tests assess paired binary outcomes; logistic GEE accounts for "
+            "responses clustered within 60 historical events. Model-level tests use Holm adjustment."
+        )
+        st.caption("Percentage-point differences measure changes in rates. Odds ratios measure adjusted relative odds; they are not rate ratios.")
         col_forest, col_gee = st.columns([1.35, 1])
     
         mc_path = os.path.join(TAB_DIR, "rq1_fs2400_tests_mcnemar.csv")
-        df_mc_shared = pd.read_csv(mc_path) if os.path.exists(mc_path) else None
+        def released_stats(filename, legacy_path, bundled_csv):
+            candidates = [legacy_path,
+                          os.path.join(BASE_DIR, "results", "rq1", "tables", filename),
+                          os.path.join(BASE_DIR, "..", "results", "rq1", "tables", filename),
+                          os.path.join(REPO_ROOT, "results", "rq1", "tables", filename)]
+            path = next((candidate for candidate in candidates if os.path.isfile(candidate)), None)
+            return pd.read_csv(path) if path else pd.read_csv(StringIO(bundled_csv))
+
+        df_mc_shared = released_stats("rq1_tests_mcnemar.csv", mc_path, RQ1_RELEASED_MCNEMAR_CSV)
 
         with col_forest:
             st.markdown("### Matched-Pair Language Effects")
@@ -661,7 +818,7 @@ def render_rq1():
                 df_fp["panel"] = df_fp["outcome"].map(outcome_map).fillna(df_fp["outcome"])
                 df_fp["is_pooled"] = df_fp["scope"].str.lower() == "pooled"
             
-                df_fp["rd_pct"] = (df_fp["risk_diff_zh_minus_en"] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
+                df_fp["rd_pct"] = (df_fp["risk_diff_zh_minus_en"] * 100).apply(lambda x: f"+{x:.1f} pp" if x > 0 else f"{x:.1f} pp")
                 df_fp["ci_str"] = df_fp.apply(lambda r: f"[{r['rd_ci_lo']*100:.1f}%, {r['rd_ci_hi']*100:.1f}%]", axis=1)
                 df_fp["p_str"] = df_fp.apply(
                     lambda r: "< 0.001 ***" if (r["p_holm"] < 0.001 or (pd.isna(r["p_holm"]) and r["p_raw"] < 0.001))
@@ -676,7 +833,7 @@ def render_rq1():
 
                 error_bars = base_fp.mark_rule(strokeWidth=2.2).encode(
                     y=alt.Y('scope_label:N', title=None, sort=scope_order, axis=alt.Axis(labelFontSize=11, ticks=False, labelLimit=240)),
-                    x=alt.X('rd_ci_lo:Q', title='Risk Diff (ZH − EN, 95% CI)', axis=alt.Axis(format='.1%', tickCount=4)),
+                    x=alt.X('rd_ci_lo:Q', title='ZH − EN (95% CI)', axis=alt.Axis(format='.1%', tickCount=4)),
                     x2='rd_ci_hi:Q',
                     color=alt.condition(alt.datum.is_pooled, alt.value('#0284C7'), alt.value('#EA580C'))
                 )
@@ -704,19 +861,21 @@ def render_rq1():
                 zero_ref = base_fp.mark_rule(color='#94A3B8', strokeDash=[4, 4], strokeWidth=1.2).encode(x=alt.datum(0))
 
                 forest_chart = (zero_ref + error_bars + points + text_vals).properties(width=185, height=260).facet(
-                    column=alt.Column('panel:N', title=None, sort=panel_order, header=alt.Header(labelFontSize=11, labelFontWeight='bold', labelColor='#E2E8F0'))
-                ).configure_view(strokeWidth=0)
+                    column=alt.Column('panel:N', title=None, sort=panel_order, header=alt.Header(labelFontSize=11, labelFontWeight='bold', labelColor='#203047'))
+                ).configure_view(strokeWidth=0).configure_axis(
+                    labelColor='#203047', titleColor='#203047'
+                )
 
                 st.altair_chart(forest_chart, use_container_width=True)
                 st.caption("* Pooled models in sky blue; individual models in orange evaluated via Holm-adjusted McNemar test.")
             
         with col_gee:
             st.markdown("### Clustered Regression (GEE)")
-            st.caption("Multivariate logistic model controlling for intra-event clustering across 60 historical topics (N = 2,400).")
+            st.caption("Logistic GEE clustered by 60 historical events. Restriction: all models, N = 2,400. Hard refusal: Chinese models only, N = 1,200.")
         
             gee_path = os.path.join(TAB_DIR, "rq1_fs2400_tests_gee.csv")
-            if os.path.exists(gee_path):
-                df_gee = pd.read_csv(gee_path)
+            df_gee = released_stats("rq1_tests_gee.csv", gee_path, RQ1_RELEASED_GEE_CSV)
+            if not df_gee.empty:
                 clean_gee = df_gee[(df_gee["spec"] == "main_effects") & (df_gee["term"] != "Intercept")].copy()
                 term_map = {
                     "lang_zh": "Mandarin Prompt (vs. English)",
@@ -732,11 +891,11 @@ def render_rq1():
                 clean_gee["95% CI"] = clean_gee.apply(lambda r: f"[{r['or_ci_lo']:.2f}, {r['or_ci_hi']:.2f}]", axis=1)
                 clean_gee["Significance (p-value)"] = clean_gee["p"].apply(lambda p: "< 0.001 ***" if p < 0.001 else f"{p:.3f}")
 
-                gee_display = clean_gee[["Target Outcome", "Predictor", "Odds Ratio (OR)", "95% CI", "Significance (p-value)"]]
+                gee_display = clean_gee[["Target Outcome", "Predictor", "model_scope", "n_obs", "Odds Ratio (OR)", "95% CI", "Significance (p-value)"]].rename(columns={"model_scope": "Models included", "n_obs": "Responses"})
                 st.dataframe(style_uniform_table(gee_display, text_cols=["Target Outcome", "Predictor"]), use_container_width=True, hide_index=True)
                 st.info(
-                    "**Key Statistical Finding:** Querying in Mandarin more than doubles restriction likelihood (**OR = 2.38×**, $p < 0.001$) "
-                    "even after controlling for model developer origin and topic sensitivity."
+                    "**Key Statistical Finding:** Querying in Mandarin more than doubles the odds of restriction (**OR = 2.38×**, $p < 0.001$) "
+                    "even after controlling for model developer origin and event origin (China-centric versus US-centric)."
                 )
 
     # -------------------------------------------------------------
@@ -745,63 +904,19 @@ def render_rq1():
     # -------------------------------------------------------------
     # Tab 3: Systemic Distribution & Framing
     # -------------------------------------------------------------
-    with tab_events:
-        st.markdown("### Event-Level Analysis: Cross-Lingual Restriction Gap across Historical Topics")
-    
-        if df_fs_loaded is not None:
-            df_fs = df_fs_loaded.copy()
-            df_fs['is_restricted'] = (df_fs['tier'] >= 1).astype(int)
-        
-            ev_summary = df_fs.groupby(['event_id', 'event_set', 'language'])['is_restricted'].mean().reset_index()
-            ev_piv = ev_summary.pivot(index=['event_id', 'event_set'], columns='language', values='is_restricted').reset_index()
-            ev_piv['gap'] = ev_piv['zh'] - ev_piv['en']
-            ev_piv['event_name'] = ev_piv['event_id'].map(EVENT_DICT)
-            ev_piv['origin_label'] = ev_piv['event_set'].map({'china': 'China-Centric Event', 'us': 'US-Centric Event'})
-            ev_piv = ev_piv.sort_values('gap').reset_index(drop=True)
-            ev_piv['rank'] = ev_piv.index + 1
-            ev_piv['en_pct'] = (ev_piv['en'] * 100).round(1).astype(str) + "%"
-            ev_piv['zh_pct'] = (ev_piv['zh'] * 100).round(1).astype(str) + "%"
-            ev_piv['gap_pct'] = (ev_piv['gap'] * 100).apply(lambda x: f"+{x:.1f}%" if x > 0 else f"{x:.1f}%")
-
-            c_pos, c_zero, c_neg = st.columns(3)
-            c_pos.metric(label="Higher Restriction in Mandarin", value="65.0%", help="39 of 60 events")
-            c_zero.metric(label="Equal Restriction", value="20.0%", help="12 of 60 events")
-            c_neg.metric(label="Higher Restriction in English", value="15.0%", help="9 of 60 events")
-
-            scatter = alt.Chart(ev_piv).mark_circle(size=95, opacity=0.88).encode(
-                x=alt.X('rank:Q', title='Historical Events (Ranked from Lowest to Highest Gap)'),
-                y=alt.Y('gap:Q', title='Restriction Rate Gap (Mandarin − English)', axis=alt.Axis(format='.1%')),
-                color=alt.Color('origin_label:N', title='Event Origin', scale=alt.Scale(domain=['China-Centric Event', 'US-Centric Event'], range=['#00D2FF', '#FF3366'])),
-                tooltip=[
-                    alt.Tooltip('event_name:N', title='Historical Event'),
-                    alt.Tooltip('event_id:N', title='Event ID'),
-                    alt.Tooltip('origin_label:N', title='Topic Origin'),
-                    alt.Tooltip('en_pct:N', title='English Restriction'),
-                    alt.Tooltip('zh_pct:N', title='Mandarin Restriction'),
-                    alt.Tooltip('gap_pct:N', title='Language Gap (ZH − EN)')
-                ]
-            ).properties(height=400)
-
-            zero_line = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(color='#94A3B8', strokeDash=[5, 5], strokeWidth=1.5).encode(y='y:Q')
-            st.altair_chart(scatter + zero_line, use_container_width=True)
-        else:
-            gap_path = os.path.join(FIG_DIR, "rq1_fs2400_event_gap.png")
-            if os.path.exists(gap_path):
-                st.image(gap_path, use_container_width=True)
-            else:
-                st.warning("RQ1 data is unavailable. Add `data/processed/rq1/tiers_fs.csv`.")
+    if section == "Explore a response":
         # -------------------------------------------------------------
         # Interactive Case Explorer (Compact Table + Dynamic Rationale on Click)
         # -------------------------------------------------------------
-        st.markdown("---")
-        with st.expander("🔎 Interactive Benchmark Explorer", expanded=True):
+        with st.container(border=True):
+            st.markdown("#### Interactive Benchmark Explorer")
             if df_fs_loaded is not None:
                 df_fs = df_fs_loaded.copy()
                 df_fs['event_topic'] = df_fs['event_id'].map(EVENT_DICT)
                 df_fs['topic_origin'] = df_fs['event_set'].map({'china': 'China-Centric', 'us': 'US-Centric'}).fillna(df_fs['event_set'])
             
                 tier_label_map = {
-                    0: "Tier 0: Full Answer", 
+                    0: "Tier 0: Unrestricted", 
                     1: "Tier 1: Soft Evasion", 
                     2: "Tier 2: Hard Refusal"
                 }
@@ -816,7 +931,7 @@ def render_rq1():
                 with f3:
                     sel_frame = st.multiselect("Framing Strategies", options=sorted(df_fs["frame_id"].unique()), default=sorted(df_fs["frame_id"].unique()))
                 with f4:
-                    all_tiers = ["Tier 0: Full Answer", "Tier 1: Soft Evasion", "Tier 2: Hard Refusal"]
+                    all_tiers = ["Tier 0: Unrestricted", "Tier 1: Soft Evasion", "Tier 2: Hard Refusal"]
                     sel_tiers = st.multiselect("Response Tiers", options=all_tiers, default=all_tiers)
 
                 # Row 2 Filters
@@ -878,7 +993,7 @@ def render_rq1():
                     ev_id = row_data["event_id"]
                 
                     tier_color_badge = {
-                        "Tier 0: Full Answer": "🟢 Full Answer (Tier 0)",
+                        "Tier 0: Unrestricted": "🟢 Unrestricted (Tier 0)",
                         "Tier 1: Soft Evasion": "🟡 Soft Evasion (Tier 1)",
                         "Tier 2: Hard Refusal": "🔴 Hard Refusal (Tier 2)"
                     }.get(row_data["tier_name"], row_data["tier_name"])
@@ -950,12 +1065,26 @@ def render_rq1():
                                     st.markdown("*No independent translation was generated for this hard refusal (the model issued a direct refusal statement: 'I'm sorry, I haven't learned how to answer this question yet').*")
                                 else:
                                     st.markdown(trans_text)
-                    elif lang == "zh":
-                        with st.expander("🌐 View Prompt & Model Response", expanded=False):
-                            st.warning(f"Translation record missing for ID `{raw_resp_id}` (Keys tried: `{suffix_key}`, `{composite_key}`). Total records loaded: {len(translation_lookup):,}")
                     else:
-                        with st.expander("🌐 View Prompt & Model Response", expanded=False):
-                            st.info("This query was submitted in English (baseline). English-to-English translation is not required.")
+                        def available_text(fields):
+                            for field in fields:
+                                value = row_data.get(field, "")
+                                if pd.notna(value) and str(value).strip():
+                                    return str(value)
+                            return ""
+                        prompt = available_text(['prompt_text', 'prompt', 'original_prompt'])
+                        response = available_text(['original_response', 'response_text', 'response', 'answer', 'model_response'])
+                        st.markdown("#### Prompt and model response")
+                        if prompt:
+                            st.markdown("**Original prompt**")
+                            st.write(prompt)
+                        if response:
+                            st.markdown("**Original response**")
+                            st.write(response)
+                        else:
+                            st.info("The selected CSV record does not contain the original response text. Add the corresponding model-output or translation file to display it.")
+                        if lang == 'zh':
+                            st.caption("An English translation is unavailable for this record.")
 
                 # Export Artifacts Row (PDF Source Register Only)
                 st.markdown("---")
@@ -972,14 +1101,94 @@ def render_rq1():
                 st.info("Place `tiers_fs.csv` in `data/processed/rq1/` to enable prompt-level case exploration.")
 
 
+    if section == "Events & framing":
+        st.divider()
+        st.markdown("### Event-Level Analysis: Cross-Lingual Restriction Gap across Historical Topics")
+    
+        if df_fs_loaded is not None:
+            df_fs = df_fs_loaded.copy()
+            df_fs['is_restricted'] = (df_fs['tier'] >= 1).astype(int)
+        
+            ev_summary = df_fs.groupby(['event_id', 'event_set', 'language'])['is_restricted'].mean().reset_index()
+            ev_piv = ev_summary.pivot(index=['event_id', 'event_set'], columns='language', values='is_restricted').reset_index()
+            ev_piv['gap'] = ev_piv['zh'] - ev_piv['en']
+            ev_piv['event_name'] = ev_piv['event_id'].map(EVENT_DICT)
+            ev_piv['origin_label'] = ev_piv['event_set'].map({'china': 'China-Centric Event', 'us': 'US-Centric Event'})
+            ev_piv = ev_piv.sort_values('gap').reset_index(drop=True)
+            ev_piv['rank'] = ev_piv.index + 1
+            ev_piv['en_pct'] = (ev_piv['en'] * 100).round(1).astype(str) + "%"
+            ev_piv['zh_pct'] = (ev_piv['zh'] * 100).round(1).astype(str) + "%"
+            ev_piv['gap_pct'] = (ev_piv['gap'] * 100).apply(lambda x: f"+{x:.1f} pp" if x > 0 else f"{x:.1f} pp")
+
+            c_pos, c_zero, c_neg = st.columns(3)
+            valid_events = ev_piv.dropna(subset=['en', 'zh'])
+            n_events = len(valid_events)
+            event_counts = [(valid_events['gap'] > 1e-10).sum(),
+                            (valid_events['gap'].abs() <= 1e-10).sum(),
+                            (valid_events['gap'] < -1e-10).sum()]
+            for column, label, count in zip([c_pos, c_zero, c_neg],
+                    ["Higher restriction in Mandarin", "Equal restriction", "Higher restriction in English"], event_counts):
+                column.metric(label, f"{count / n_events:.1%}" if n_events else "—",
+                              help=f"{count} of {n_events} events with both languages")
+
+            scatter = alt.Chart(ev_piv).mark_circle(size=95, opacity=0.88).encode(
+                x=alt.X('rank:Q', title='Historical Events (Ranked from Lowest to Highest Gap)'),
+                y=alt.Y('gap:Q', title='Restriction Rate Gap (Mandarin − English)', axis=alt.Axis(format='.1%')),
+                color=alt.Color('origin_label:N', title='Event Origin', scale=alt.Scale(domain=['China-Centric Event', 'US-Centric Event'], range=['#00D2FF', '#FF3366'])),
+                tooltip=[
+                    alt.Tooltip('event_name:N', title='Historical Event'),
+                    alt.Tooltip('event_id:N', title='Event ID'),
+                    alt.Tooltip('origin_label:N', title='Topic Origin'),
+                    alt.Tooltip('en_pct:N', title='English Restriction'),
+                    alt.Tooltip('zh_pct:N', title='Mandarin Restriction'),
+                    alt.Tooltip('gap_pct:N', title='Language Gap (ZH − EN)')
+                ]
+            ).properties(height=400)
+
+            zero_line = alt.Chart(pd.DataFrame({'y': [0]})).mark_rule(color='#94A3B8', strokeDash=[5, 5], strokeWidth=1.5).encode(y='y:Q')
+            st.altair_chart(scatter + zero_line, use_container_width=True)
+        else:
+            gap_path = os.path.join(FIG_DIR, "rq1_fs2400_event_gap.png")
+            if os.path.exists(gap_path):
+                st.image(gap_path, use_container_width=True)
+            else:
+                st.warning("RQ1 data is unavailable. Add `data/processed/rq1/tiers_fs.csv`.")
+
+        st.divider()
+        st.markdown("### Restriction across prompt framings")
+        framing_data = df_fs_loaded.copy()
+        framing_data['tier'] = pd.to_numeric(framing_data['tier'], errors='coerce')
+        framing_data = framing_data[framing_data['tier'].isin([0, 1, 2])].copy()
+        framing_data['restricted'] = framing_data['tier'].isin([1, 2]).astype(int)
+        framing_summary = framing_data.groupby(['frame_id', 'language']).agg(
+            restricted=('restricted', 'sum'), responses=('restricted', 'size')
+        ).reset_index()
+        framing_summary['rate'] = framing_summary['restricted'] / framing_summary['responses']
+        framing_summary['Language'] = framing_summary['language'].map({'en': 'English', 'zh': 'Mandarin'})
+        framing_chart = alt.Chart(framing_summary).mark_bar().encode(
+            x=alt.X('frame_id:N', title='Prompt framing', sort=['F1', 'F2', 'F3', 'F4', 'F5'], axis=alt.Axis(labelAngle=0)),
+            xOffset=alt.XOffset('Language:N'),
+            y=alt.Y('rate:Q', title='Restricted responses', axis=alt.Axis(format='.0%')),
+            color=alt.Color('Language:N', scale=alt.Scale(domain=['English', 'Mandarin'], range=['#176d71', '#80c9c1'])),
+            tooltip=[alt.Tooltip('frame_id:N', title='Framing'), 'Language:N',
+                     alt.Tooltip('rate:Q', title='Restriction rate', format='.1%'),
+                     alt.Tooltip('restricted:Q', title='Restricted'), alt.Tooltip('responses:Q', title='Responses')]
+        ).properties(height=300).configure_axis(labelColor='#203047', titleColor='#203047').configure_legend(labelColor='#203047', titleColor='#203047')
+        st.altair_chart(framing_chart, use_container_width=True)
+        framing_table = framing_summary[['frame_id', 'Language', 'restricted', 'responses', 'rate']].rename(
+            columns={'frame_id': 'Framing', 'restricted': 'Restricted', 'responses': 'Responses', 'rate': 'Restriction rate'})
+        st.dataframe(framing_table.style.format({'Restriction rate': '{:.1%}'}), hide_index=True, use_container_width=True)
+        st.caption("Descriptive restriction rates pooled across models and events. This chart does not test framing differences. RQ3 separately examines bias by framing.")
+
+
 st.set_page_config(page_title="Silence of the LLMs", page_icon="📊", layout="wide")
 st.markdown(
     """
     <style>
     .stApp { background: #f7f9fc; color: #203047; }
-    .block-container { max-width: 1180px; padding-top: 2rem; padding-bottom: 4rem; }
+    .block-container { max-width: 1180px; padding-top: 4.5rem; padding-bottom: 4rem; }
     .dashboard-hero {
-        padding: 2.1rem 2.5rem;
+        padding: 1.25rem 2.5rem;
         margin: 0 0 1.6rem;
         border-radius: 22px;
         background: linear-gradient(120deg, #142b46, #19546a 72%, #1b776d);
@@ -990,8 +1199,8 @@ st.markdown(
         font-size: .78rem; font-weight: 700; letter-spacing: .16em;
         text-transform: uppercase; color: #a5e9dc; margin-bottom: .45rem;
     }
-    .dashboard-hero h1 { color: #ffffff; font-size: 2.55rem; margin: 0; line-height: 1.16; }
-    .dashboard-hero p { color: #d9e7ed; font-size: 1.06rem; margin: .8rem 0 0; }
+    .dashboard-hero h1 { color: #ffffff; font-size: 2.55rem; margin: 0; padding: 0; line-height: 1.16; }
+    .dashboard-hero p { color: #d9e7ed; font-size: 1.06rem; margin: .55rem 0 0; padding: 0; line-height: 1.45; }
     [data-testid="stMetric"] {
         padding: 1.1rem 1.25rem;
         background: #ffffff;
@@ -1069,19 +1278,20 @@ st.markdown(
     [data-testid="stAlert"] { border-radius: 12px; }
     h2, h3 { color: #203047; letter-spacing: -.025em; }
     .rq2-intro {
-        padding: 1.5rem 1.8rem;
-        margin: .5rem 0 1.35rem;
-        border: 1px solid #dce8ed;
-        border-left: 5px solid #23a594;
-        border-radius: 14px;
-        background: linear-gradient(110deg, #ffffff, #ebf7f5);
+        padding: .85rem 1.4rem;
+        margin: .4rem 0 1rem;
+        border: 1px solid #9bcfca;
+        border-left: 6px solid #159e91;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #e0f3f0, #cdeae6);
+        box-shadow: 0 4px 14px rgba(23, 109, 113, .08);
     }
     .rq2-intro .eyebrow, .section-kicker {
         font-size: .76rem; font-weight: 750; letter-spacing: .12em;
         text-transform: uppercase; color: #127c75;
     }
-    .rq2-intro h2 { margin: .25rem 0 .45rem; font-size: 1.9rem; }
-    .rq2-intro p { color: #53667a; margin: 0; line-height: 1.6; }
+    .rq2-intro h2 { margin: .25rem 0 .35rem; padding: 0; font-size: 1.7rem; line-height: 1.2; }
+    .rq2-intro p { color: #36566a; margin: 0; padding: 0; line-height: 1.45; }
     .study-strip {
         display: flex; flex-wrap: wrap; gap: .6rem; margin: .4rem 0 1.1rem;
     }
@@ -1098,8 +1308,10 @@ st.markdown(
     .takeaway strong { color: #173a53; }
     @media (max-width: 700px) {
         .block-container { padding-left: 1rem; padding-right: 1rem; }
-        .dashboard-hero { padding: 1.5rem; }
+        .dashboard-hero { padding: 1rem 1.5rem; }
         .dashboard-hero h1 { font-size: 2rem; }
+        .rq2-intro { padding: .8rem 1rem; }
+        .rq2-intro h2 { font-size: 1.45rem; }
         .stApp div[data-testid="stButton"] button {
             min-height: 46px; padding: .55rem .5rem; font-size: .92rem;
         }
@@ -1129,197 +1341,209 @@ elif selected_rq == "RQ2":
     preferred_csv_path = data_dir / "processed" / "rq2" / "rq2_results.csv"
     legacy_csv_path = data_dir / "rq2_results.csv"
     csv_path = preferred_csv_path if preferred_csv_path.is_file() else legacy_csv_path
-    responses = pd.read_csv(csv_path, keep_default_na=False)
-    counts = (
-        responses.groupby(["model_name", "final_class"])
-        .size()
-        .unstack(fill_value=0)
-        .reindex(columns=LABEL_ORDER, fill_value=0)
-    )
-    language_counts = (
-        responses.groupby(["language", "final_class"])
-        .size()
-        .unstack(fill_value=0)
-        .reindex(columns=LABEL_ORDER, fill_value=0)
-        .rename(index={"en": "English", "zh": "Mandarin"})
-    )
+    if not csv_path.is_file():
+        st.error("RQ2 data is missing. Add data/processed/rq2/rq2_results.csv.")
+        st.stop()
+    try:
+        responses = pd.read_csv(csv_path, keep_default_na=False)
+    except pd.errors.EmptyDataError:
+        st.error("The RQ2 CSV is empty.")
+        st.stop()
+    required_columns = {'model_name', 'language', 'final_class', 'response_id', 'frame_id', 'prompt_id', 'prompt_text', 'original_response'}
+    missing_columns = required_columns - set(responses.columns)
+    if missing_columns:
+        st.error("RQ2 CSV is missing columns: " + ", ".join(sorted(missing_columns)))
+        st.stop()
+    if responses.empty or not responses['final_class'].isin(LABEL_ORDER).all():
+        st.error("RQ2 data must contain responses with Factual, Non-factual or Non-assessable labels.")
+        st.stop()
+    if not check_benchmark(responses, ("final_class", {"Factual": 2203, "Non-factual": 47, "Non-assessable": 150})):
+        st.stop()
+    released_results_note()
+    counts_all = responses['final_class'].value_counts().reindex(LABEL_ORDER, fill_value=0)
+    factual, non_factual, non_assessable = [int(counts_all[label]) for label in LABEL_ORDER]
+    assessable = factual + non_factual
+    rate_text = f"{non_factual / assessable:.1%}" if assessable else "N/A"
     st.markdown(
-        """
-        <div class="rq2-intro">
-          <div class="eyebrow">Research question 02 · Factual accuracy</div>
-          <h2>Explore and present RQ2</h2>
-          <p>See the overall findings, compare model and language results, or
-          inspect how an individual answer was classified.</p>
-        </div>
-        """,
+        '<div class="rq2-intro"><div class="eyebrow">Research question 02 · Factual accuracy</div>'
+        '<h2>RQ2 · Factual accuracy</h2><p>Explore factuality, model and language comparisons, classification quality and individual responses.</p></div>',
         unsafe_allow_html=True,
     )
-
     st.markdown('<div class="nav-label">Explore RQ2</div>', unsafe_allow_html=True)
     with st.container(border=True):
         selected_section = navigation(
-            ["Full analysis", "Model & language comparisons", "Filter by label",
-             "Explore a response", "Presentation view"],
-            "selected_rq2_section",
-            [1.2, 2.4, 1.35, 1.7, 1.7],
-        )
+            ["Overview", "Model & language", "Classification quality", "Statistical evidence", "Explore responses"],
+            "selected_rq2_section", [1, 1.4, 1.4, 1.5, 1.4])
 
-    if selected_section == "Model & language comparisons":
-        st.subheader("Select a model and language")
-        model_col, language_col = st.columns(2)
-        with model_col:
-            selected_model = st.selectbox(
-                "Choose a model", counts.index.tolist(), key="rq2_compare_model"
-            )
-        with language_col:
-            selected_language = st.selectbox(
-                "Choose a language", language_counts.index.tolist(), key="rq2_compare_language"
-            )
-
-        model_assessable = int(counts.loc[selected_model, "Factual"] + counts.loc[selected_model, "Non-factual"])
-        model_non_factual = int(counts.loc[selected_model, "Non-factual"])
-        language_assessable = int(
-            language_counts.loc[selected_language, "Factual"]
-            + language_counts.loc[selected_language, "Non-factual"]
+    if selected_section == "Overview":
+        st.subheader("How often do LLM answers contain factual errors?")
+        cols = st.columns(4)
+        cols[0].metric("Responses classified", f"{len(responses):,}")
+        cols[1].metric("Non-factual", f"{non_factual:,}")
+        cols[2].metric("Non-assessable", f"{non_assessable:,}")
+        cols[3].metric("Non-factual among assessable", rate_text)
+        st.caption(f"{non_factual:,} non-factual out of {assessable:,} assessable responses. Non-assessable responses are excluded from this rate.")
+        st.altair_chart(label_chart(counts_all.tolist()), use_container_width=True)
+        st.markdown("#### Key findings")
+        st.markdown(
+            f"- **{rate_text}** of assessable responses in the CSV were classified as non-factual.\n"
+            "- In the released human-reviewed sample, **6 of 276 assessable responses (2.17%)** were non-factual.\n"
+            "- Reported matched tests found a framing difference in **assessability**, with no clear difference in **non-factual outcomes**."
         )
-        language_non_factual = int(language_counts.loc[selected_language, "Non-factual"])
-        with model_col:
-            st.metric(
-                f"{selected_model}: non-factual among assessable",
-                f"{model_non_factual / model_assessable:.1%}" if model_assessable else "N/A",
-            )
-        with language_col:
-            st.metric(
-                f"{selected_language}: non-factual among assessable",
-                f"{language_non_factual / language_assessable:.1%}" if language_assessable else "N/A",
-            )
-        st.caption("Non-assessable responses are excluded from both rates.")
+        st.caption("CSV summaries are calculated live. Human-validation results and statistical tests refer to the released analysis and are shown in their dedicated tabs.")
 
-        st.divider()
-        st.subheader("RQ2 results by model")
-        summary = counts.copy()
-        summary["Assessable responses"] = counts["Factual"] + counts["Non-factual"]
-        summary["Non-factual rate (%)"] = (
-            100 * counts["Non-factual"]
-            / summary["Assessable responses"].where(summary["Assessable responses"].ne(0))
-        ).round(1)
-        st.dataframe(summary, use_container_width=True)
-        st.bar_chart(counts, stack=True)
-        st.caption("Each model contributed 600 responses. Counts include blank responses classified by rule.")
+    if selected_section == "Model & language":
+        def comparison_summary(group_columns):
+            table = responses.groupby(group_columns + ['final_class']).size().unstack(fill_value=0).reindex(columns=LABEL_ORDER, fill_value=0).reset_index()
+            table['Assessable'] = table['Factual'] + table['Non-factual']
+            table['Total'] = table['Assessable'] + table['Non-assessable']
+            table['Non-factual rate'] = table['Non-factual'] / table['Assessable'].where(table['Assessable'].ne(0))
+            table['Group'] = table[group_columns].astype(str).agg(' · '.join, axis=1)
+            return table
+        def show_comparison(group_columns):
+            table = comparison_summary(group_columns)
+            chart = alt.Chart(table).mark_bar(color='#177a8b', cornerRadiusEnd=4).encode(
+                x=alt.X('Non-factual rate:Q', title='Non-factual among assessable', axis=alt.Axis(format='.1%', tickCount=5)),
+                y=alt.Y('Group:N', title=None, sort='-x', axis=alt.Axis(labelLimit=300)),
+                tooltip=['Group:N', alt.Tooltip('Non-factual rate:Q', format='.1%'), 'Non-factual:Q', 'Assessable:Q', 'Non-assessable:Q']
+            ).properties(height=max(160, len(table)*38))
+            labels = chart.mark_text(align="left", dx=6, color="#203047").encode(text=alt.Text("Non-factual rate:Q", format=".1%"))
+            maximum = table['Non-factual rate'].max()
+            upper = max(.01, float(maximum) * 1.3) if pd.notna(maximum) else .01
+            chart = chart.encode(x=alt.X('Non-factual rate:Q', scale=alt.Scale(domain=[0, upper]), title='Non-factual among assessable', axis=alt.Axis(format='.1%', tickCount=5)))
+            labels = labels.encode(x=alt.X('Non-factual rate:Q', scale=alt.Scale(domain=[0, upper])))
+            st.altair_chart(alt.layer(chart, labels).configure_axis(labelColor='#203047', titleColor='#203047'), use_container_width=True)
+            st.dataframe(table.drop(columns='Group').style.format({'Non-factual rate':'{:.1%}'}, na_rep='N/A'), hide_index=True, use_container_width=True)
+        st.subheader("Model and language comparisons")
+        st.caption("Rates exclude non-assessable responses. Tables show the counts and denominators; these are descriptive comparisons.")
+        group_choice = st.selectbox("Compare by", ['Model', 'Language', 'Model × language'], key='rq2_group_choice')
+        show_comparison({'Model':['model_name'], 'Language':['language'], 'Model × language':['model_name','language']}[group_choice])
+        st.markdown("#### Inspect a model–language combination")
+        c1, c2 = st.columns(2)
+        model = c1.selectbox("Model", sorted(responses.model_name.unique()), key='rq2_compare_model')
+        model_rows = responses[responses.model_name == model]
+        language = c2.selectbox("Language", sorted(model_rows.language.unique()), key='rq2_compare_language')
+        subset = model_rows[model_rows.language == language]
+        subset_counts = subset.final_class.value_counts().reindex(LABEL_ORDER, fill_value=0)
+        denominator = int(subset_counts['Factual'] + subset_counts['Non-factual'])
+        numerator = int(subset_counts['Non-factual'])
+        st.metric("Non-factual among assessable", f"{numerator/denominator:.1%}" if denominator else 'N/A')
+        st.caption(f"{numerator} of {denominator} assessable responses; {int(subset_counts['Non-assessable'])} non-assessable.")
 
-        st.divider()
-        st.subheader("RQ2 results by language")
-        language_summary = language_counts.copy()
-        language_summary["Assessable responses"] = (
-            language_counts["Factual"] + language_counts["Non-factual"]
+    if selected_section == "Classification quality":
+        st.subheader("How to interpret the RQ2 classifications")
+        definitions = pd.DataFrame({
+            "Label": LABEL_ORDER,
+            "Meaning": [
+                "Assessed as factually accurate under the RQ2 judging criteria.",
+                "Assessed as containing a factual error under the RQ2 judging criteria.",
+                "Insufficient assessable factual content to assign a factual or non-factual label."
+            ]
+        })
+        st.dataframe(definitions, hide_index=True, use_container_width=True)
+        st.caption("Non-assessable is a separate category, not a factual error. The non-factual rate uses only factual and non-factual responses.")
+        st.markdown("#### Human-reviewed sample")
+        st.caption("Source: IDP-186 archive · results/rq2/iaa/tables/rq2_iaa_confusion_judge.csv and rq2_iaa_agreement.csv. This archive differs from the earlier 272/4/24 consensus summary; confirm the intended release before treating these as final validation results.")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Factual", "270")
+        c2.metric("Non-factual", "6")
+        c3.metric("Non-assessable", "24")
+        st.caption("Archived human consensus on 300 responses: 6 of 276 assessable responses were non-factual (2.17%).")
+        st.markdown("#### Agreement with human consensus")
+        agreement_cols = st.columns(4)
+        agreement_cols[0].metric("Matching labels", "293 / 300")
+        agreement_cols[1].metric("Observed agreement", "97.7%")
+        agreement_cols[2].metric("Cohen's kappa", "0.8711")
+        agreement_cols[3].metric("Gwet's AC1 · previously reported", "0.9744")
+        st.caption("AC1 0.9744 is retained from the earlier reported validation results. Its calculation and sample could not be verified in the IDP-186 archive; it should not be assumed to describe the archived confusion matrix.")
+        st.markdown(
+            "**Reading these measures:** Observed agreement is the proportion of matching labels. "
+            "Kappa accounts for chance agreement. "
+            "These results compare Mistral with final human consensus on the same 300 responses."
         )
-        language_summary["Non-factual rate (%)"] = (
-            100 * language_counts["Non-factual"]
-            / language_summary["Assessable responses"].where(
-                language_summary["Assessable responses"].ne(0)
-            )
-        ).round(1)
-        st.dataframe(language_summary, use_container_width=True)
-        st.bar_chart(language_counts, stack=True)
-        st.caption("Each language contributed 1,200 responses. Counts show final RQ2 classifications.")
-        st.caption(
-            "English: 35 of 1,167 assessable responses were non-factual (3.0%). "
-            "Mandarin: 12 of 1,083 (1.1%). Non-assessable responses are excluded."
-        )
-        st.info(
-            "These are overall rates. In the matched comparison of English and "
-            "Mandarin answers to the same questions, the analysis did not find "
-            "a clear difference in non-factual outcomes (exact McNemar p = 1.000)."
-        )
+        st.info("Only six responses in this archived human-reviewed sample were non-factual. High overall agreement alone does not establish how well the judge detects factual errors; class-specific performance requires the matched labels.")
+        confusion = pd.DataFrame([[268, 2, 0], [1, 5, 0], [2, 2, 20]],
+            index=["Human Factual", "Human Non-factual", "Human Non-assessable"],
+            columns=["Judge Factual", "Judge Non-factual", "Judge Non-assessable"])
+        st.markdown("#### Human consensus × judge classifications")
+        st.dataframe(confusion, use_container_width=True)
+        st.caption("Rows represent human consensus; columns represent judge labels. The judge identified 5 of 6 human non-factual cases in this archive. This small sample limits conclusions about error detection.")
+        st.caption("Released validation results are retained here; they are not recalculated from the full CSV. Use Explore responses to inspect individual classifications and any available rationale.")
 
-    if selected_section == "Filter by label":
-        st.markdown('<div class="section-kicker">Browse the dataset</div>', unsafe_allow_html=True)
-        st.subheader("Filter responses by classification")
-        st.caption("Choose a label, browse the matching rows, then open a response below.")
-        with st.container(border=True):
-            label = st.selectbox(
-                "Classification",
-                ["All", "Factual", "Non-factual", "Non-assessable"],
-                key="rq2_label_filter",
-            )
-        filtered = (
-            responses
-            if label == "All"
-            else responses[responses["final_class"] == label]
-        )
+    if selected_section == "Statistical evidence":
+        st.subheader("Factuality and assessability across framings")
+        framing = responses.groupby(['frame_id', 'final_class']).size().unstack(fill_value=0).reindex(columns=LABEL_ORDER, fill_value=0).reset_index()
+        framing['Assessable'] = framing['Factual'] + framing['Non-factual']
+        framing['Total'] = framing['Assessable'] + framing['Non-assessable']
+        framing['Non-factual rate'] = framing['Non-factual'] / framing['Assessable'].where(framing['Assessable'].ne(0))
+        framing['Assessability rate'] = framing['Assessable'] / framing['Total']
+        error_panel, assess_panel = st.columns(2, gap="large")
+        for panel, metric, heading, color in [
+            (error_panel, 'Non-factual rate', 'Non-factual among assessable', '#177a8b'),
+            (assess_panel, 'Assessability rate', 'Assessable among all responses', '#176d71')
+        ]:
+            with panel:
+                with st.container(border=True):
+                    st.markdown('#### ' + heading)
+                    plot_data = framing.copy()
+                    plot_data['Rate label'] = plot_data[metric].map(lambda value: f'{value:.1%}' if pd.notna(value) else 'N/A')
+                    base = alt.Chart(plot_data).encode(
+                        y=alt.Y('frame_id:N', title=None, sort=['F1','F2','F3','F4','F5'],
+                                axis=alt.Axis(labelFontSize=13, labelPadding=8, ticks=False, domain=False)),
+                        tooltip=[alt.Tooltip('frame_id:N', title='Framing'), alt.Tooltip(metric + ':Q', format='.1%'),
+                                 'Non-factual:Q', 'Assessable:Q', 'Non-assessable:Q', 'Total:Q']
+                    )
+                    if metric == 'Non-factual rate':
+                        maximum = plot_data[metric].max()
+                        maximum = float(maximum) if pd.notna(maximum) else 0
+                        scale = alt.Scale(domain=[0, max(0.01, maximum*1.35)])
+                        marks = base.mark_bar(color=color, size=24, cornerRadiusEnd=5)
+                        st.caption("Percentage of assessable responses labelled non-factual.")
+                    else:
+                        minimum = plot_data[metric].min()
+                        minimum = float(minimum) if pd.notna(minimum) else 0
+                        lower = max(0, (int(minimum*100)//5)*0.05-0.05)
+                        scale = alt.Scale(domain=[lower, 1.015], zero=False)
+                        marks = base.mark_circle(color=color, size=150, opacity=1)
+                        st.caption(f"Percentage with assessable factual content. Detail scale: {lower:.0%}–100%.")
+                    marks = marks.encode(x=alt.X(metric + ':Q', title='Rate', scale=scale,
+                                                  axis=alt.Axis(format='.0%', tickCount=4, gridColor='#e7edf2', domain=False)))
+                    labels = base.mark_text(align='left', dx=11, fontSize=13, fontWeight=600, color='#203047').encode(
+                        x=alt.X(metric + ':Q', scale=scale), text='Rate label:N')
+                    chart = (marks + labels).properties(height=240).configure_view(stroke=None).configure_axis(
+                        labelColor='#203047', titleColor='#203047', titleFontSize=12)
+                    st.altair_chart(chart, use_container_width=True)
+        st.dataframe(framing.rename(columns={'frame_id':'Framing'}).style.format(
+            {'Non-factual rate':'{:.1%}', 'Assessability rate':'{:.1%}'}, na_rep='N/A'),
+            hide_index=True, use_container_width=True)
+        st.caption("Charts and counts are calculated from the CSV and show descriptive rates pooled across models and languages. Non-factual rates exclude non-assessable responses.")
+        st.markdown("#### Reported statistical results")
+        results = pd.DataFrame([
+            ['Classification mix across framings', 'Pearson chi-square', '2,400 responses', '0.640', 'No clear overall difference'],
+            ['Non-factual outcomes across framings', 'Cochran’s Q', '428 complete assessable blocks', '0.281', 'No clear matched difference'],
+            ['Assessability across framings', 'Cochran’s Q', '480 complete matched blocks', '0.003', 'Evidence of a matched difference'],
+            ['Non-factual outcomes across models', 'Cochran’s Q', '461 complete assessable blocks', '<0.001', 'Evidence of a matched model difference'],
+            ['Non-factual outcomes: English vs Mandarin', 'Exact McNemar', '1,078 assessable pairs', '1.000', 'No clear matched difference'],
+        ], columns=['Comparison','Test','Analysis sample','p-value','Interpretation'])
+        st.dataframe(results, hide_index=True, use_container_width=True)
+        st.caption("Reported results from the released RQ2 analysis. Tests are not rerun when the CSV changes. The assessability test is reported for non-assessable outcomes; its binary complement, assessability, yields the same omnibus test.")
+        st.info("The charts describe rates across all available responses. Matched tests use corresponding prompts and, for non-factual outcomes, complete assessable blocks or pairs. A non-significant result does not establish equivalence.")
 
-        result_col, context_col = st.columns([1, 3], gap="medium")
-        result_col.metric("Matching responses", f"{len(filtered):,}")
-        context_col.info(
-            f"Showing **{label.lower()}** responses from the 2,400-row RQ2 dataset."
-            if label != "All"
-            else "Showing all responses. Select a classification to narrow the table."
-        )
-        st.markdown("#### Matching records")
-        st.dataframe(
-            filtered[
-                ["response_id", "model_name", "language",
-                 "frame_id", "prompt_id", "final_class"]
-            ].rename(columns={
-                "response_id": "Response ID",
-                "model_name": "Model",
-                "language": "Language",
-                "frame_id": "Framing",
-                "prompt_id": "Prompt ID",
-                "final_class": "Classification",
-            }),
-            use_container_width=True,
-            hide_index=True,
-            height=420,
-        )
-
-        if not filtered.empty:
-            st.divider()
-            response_id = st.selectbox(
-                "Select a response to read",
-                filtered["response_id"].astype(str).tolist(),
-                key="rq2_filtered_response",
-            )
-            row = filtered[
-                filtered["response_id"].astype(str) == response_id
-            ].iloc[0]
-            response_card(row)
-
-    if selected_section == "Presentation view":
-        counts_all = responses["final_class"].value_counts()
-        factual = int(counts_all.get("Factual", 0))
-        non_factual = int(counts_all.get("Non-factual", 0))
-        non_assessable = int(counts_all.get("Non-assessable", 0))
-        assessable = factual + non_factual
-
-        st.header("RQ2 · Factual accuracy")
-        st.write("Classification of responses across all four models.")
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Responses", f"{len(responses):,}")
-        col2.metric("Non-factual", f"{non_factual:,}")
-        col3.metric(
-            "Non-factual among assessable",
-            f"{non_factual / assessable:.1%}" if assessable else "N/A",
-        )
-
-        st.bar_chart(
-            counts[["Factual", "Non-factual", "Non-assessable"]],
-            stack=True,
-        )
-        st.caption(
-            f"{non_assessable:,} non-assessable responses are excluded "
-            "from the non-factual rate. Classifications come from the RQ2 CSV."
-        )
-    if selected_section == "Explore a response":
+    if selected_section == "Explore responses":
         st.markdown('<div class="section-kicker">Response explorer</div>', unsafe_allow_html=True)
         st.subheader("Explore an individual response")
         st.caption("Make your selections from left to right to find a specific answer.")
+        label = st.selectbox("Classification", ["All"] + LABEL_ORDER, key="rq2_explorer_label")
+        scoped = responses if label == "All" else responses[responses['final_class'] == label]
+        st.caption(f"{len(scoped):,} matching responses")
+        if scoped.empty:
+            st.info("No responses match this classification.")
+            st.stop()
         with st.container(border=True):
             model_col, language_col = st.columns(2, gap="medium")
             with model_col:
-                model = st.selectbox("1 · Model", sorted(responses["model_name"].unique()))
-            model_rows = responses[responses["model_name"] == model]
+                model = st.selectbox("1 · Model", sorted(scoped["model_name"].unique()))
+            model_rows = scoped[scoped["model_name"] == model]
             with language_col:
                 language = st.selectbox("2 · Language", sorted(model_rows["language"].unique()))
             language_rows = model_rows[model_rows["language"] == language]
@@ -1332,107 +1556,6 @@ elif selected_rq == "RQ2":
         selected = matching_rows[matching_rows["prompt_id"] == prompt_id].iloc[0]
         response_card(selected)
 
-    if selected_section == "Full analysis":
-        st.markdown('<div class="section-kicker">01 / Dataset overview</div>', unsafe_allow_html=True)
-        st.subheader("How often do LLM answers contain factual errors?")
-        st.markdown(
-            """
-            <div class="study-strip">
-              <span>60 historical events</span><span>5 prompt framings</span>
-              <span>2 languages</span><span>4 models</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        overview_cols = st.columns(4)
-        overview_cols[0].metric("Responses classified", "2,400")
-        overview_cols[1].metric("Mistral-labelled non-factual", "47")
-        overview_cols[2].metric("Non-assessable", "150")
-        overview_cols[3].metric("Non-factual among assessable", "2.1%")
-        st.caption("47 non-factual responses out of 2,250 assessable responses, as labelled by Mistral. The 150 non-assessable responses are excluded from this rate.")
-        st.subheader("Final RQ2 labels across all responses")
-        chart_col, note_col = st.columns([3, 1.25], gap="large")
-        with chart_col:
-            with st.container(border=True):
-                st.altair_chart(label_chart([2203, 47, 150]), use_container_width=True)
-        with note_col:
-            st.markdown(
-                """
-                <div class="takeaway">
-                  <strong>How to read this chart</strong><br>
-                  Most responses were labelled factual. The chart includes
-                  non-assessable answers, but the 2.1% non-factual rate
-                  excludes them. Hover over a bar for its exact count.
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        st.divider()
-        st.subheader("Human-reviewed sample (300 responses)")
-        human_cols = st.columns(3)
-        human_cols[0].metric("Human consensus: factual", "272")
-        human_cols[1].metric("Human consensus: non-factual", "4")
-        human_cols[2].metric("Human consensus: non-assessable", "24")
-        with st.container(border=True):
-            st.altair_chart(label_chart([272, 4, 24]), use_container_width=True)
-        st.metric("Human-reviewed non-factual rate among assessable responses", "1.45%")
-        st.caption("4 non-factual responses out of 276 assessable responses in the human-reviewed sample. The 24 non-assessable responses are excluded.")
-        st.info(
-            "The 2.1% rate comes from the final RQ2 classifications of all 2,400 responses "
-            "(2,388 Mistral judgments and 12 blank responses classified by rule). "
-            "The 1.45% rate comes from human consensus on a 300-response sample. "
-            "These rates alone do not show how accurately Mistral agreed with the human reviewers."
-        )
-        st.divider()
-        st.subheader("Mistral versus human consensus")
-        st.write("This comparison uses the same 300 responses reviewed by people, matched response by response with Mistral’s labels.")
-        agreement_cols = st.columns(4)
-        agreement_cols[0].metric("Matching labels", "293 / 300")
-        agreement_cols[1].metric("Observed agreement", "97.7%")
-        agreement_cols[2].metric("Gwet's AC1", "0.9744")
-        agreement_cols[3].metric("Cohen's kappa", "0.8669")
-        st.caption("Gwet's AC1 and Cohen's kappa compare Mistral with final human consensus on the same 300 responses.")
-        st.caption(
-            "Only 4 of the 300 human-reviewed responses were non-factual. "
-            "Overall agreement does not, by itself, show how well Mistral detected that small group."
-        )
-        st.divider()
-        st.subheader("Did prompt framing change factual accuracy?")
-        st.write(
-            "Across the five prompt framings, the overall mix of factual, "
-            "non-factual and non-assessable labels showed no clear difference."
-        )
-        st.metric("Overall framing comparison", "p = 0.640")
-        st.caption(
-            "Three-label chi-square test: χ²(8) = 6.065. "
-            "A matched comparison of non-factual outcomes also found "
-            "no clear difference (p = 0.281)."
-        )
-        st.divider()
-        st.subheader("Did framing affect whether answers could be assessed?")
-        st.write(
-            "The matched analysis found a difference in assessability across "
-            "the five prompt framings."
-        )
-        st.metric("Matched assessability comparison", "p = 0.003")
-        st.caption(
-            "Cochran’s Q test compared the five framings for matched prompts. "
-            "This result concerns whether an answer could be assessed for factuality, "
-            "not whether an assessable answer was factual."
-        )
-        st.divider()
-        st.subheader("RQ2: key findings")
-        st.markdown(
-            """
-            - **47 of 2,250 assessable responses (2.1%)** were classified
-              as non-factual in the full dataset.
-            - In the **300-response human-reviewed sample**, 4 of 276
-              assessable responses (1.45%) were non-factual.
-            - Mistral matched human consensus on **293 of 300 labels**.
-              Only four responses had a human non-factual label, so overall
-              agreement alone does not establish how well it detected errors.
-            - Prompt framing showed a difference in **assessability**,
-              but no clear difference in **non-factual outcomes** in the
-              matched analysis.
-            """
-        )
+        st.markdown("#### Matching records")
+        st.dataframe(scoped[["response_id", "model_name", "language", "frame_id", "prompt_id", "final_class"]],
+                     hide_index=True, use_container_width=True, height=300)
