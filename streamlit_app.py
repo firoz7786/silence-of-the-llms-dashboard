@@ -147,7 +147,6 @@ def render_rq3():
     released_tests = pd.read_csv(StringIO('scope,outcome,test,contrast,n_blocks,df,rate,rate_reference,b_frame_only,c_reference_only,method,statistic,risk_diff,rd_ci_lo,rd_ci_hi,p_raw,p_holm\nall,bias_answered,cochran_q,frame_id: all 5 framings,427,4.0,0.1091,0.0445,,,cochran_q,111.4439,,,,0.0,\nall,bias_answered,mcnemar,frame_id: F2 vs F1,427,,0.0656,0.0445,16.0,7.0,exact-binomial,7.0,0.0211,-0.0008,0.043,0.0931,0.0931\nall,bias_answered,mcnemar,frame_id: F3 vs F1,427,,0.1663,0.0445,52.0,0.0,chi2-continuity,50.0192,0.1218,0.0908,0.1528,0.0,0.0\nall,bias_answered,mcnemar,frame_id: F4 vs F1,427,,0.096,0.0445,26.0,4.0,chi2-continuity,14.7,0.0515,0.0269,0.0762,0.0001,0.0003\nall,bias_answered,mcnemar,frame_id: F5 vs F1,427,,0.1733,0.0445,55.0,0.0,chi2-continuity,53.0182,0.1288,0.097,0.1606,0.0,0.0\nall,refusal,cochran_q,frame_id: all 5 framings,480,4.0,0.0629,0.0646,,,cochran_q,16.8372,,,,0.0021,\nall,refusal,mcnemar,frame_id: F2 vs F1,480,,0.0417,0.0646,1.0,12.0,exact-binomial,1.0,-0.0229,-0.0375,-0.0083,0.0034,0.0137\nall,refusal,mcnemar,frame_id: F3 vs F1,480,,0.0667,0.0646,10.0,9.0,exact-binomial,9.0,0.0021,-0.0157,0.0199,1.0,1.0\nall,refusal,mcnemar,frame_id: F4 vs F1,480,,0.075,0.0646,12.0,7.0,exact-binomial,7.0,0.0104,-0.0074,0.0282,0.3593,1.0\nall,refusal,mcnemar,frame_id: F5 vs F1,480,,0.0667,0.0646,6.0,5.0,exact-binomial,5.0,0.0021,-0.0115,0.0156,1.0,1.0\n'))
     if not check_benchmark(data, ("analysis_class", {"No bias": 1951, "Bias": 298, "Refusal": 151})):
         return
-    released_results_note()
     def summary():
         result = data.groupby(['frame_id', 'analysis_class']).size().unstack(fill_value=0).reindex(columns=labels, fill_value=0).reset_index()
         result['Total'] = result[labels].sum(axis=1)
@@ -321,7 +320,6 @@ def render_rq4():
     st.markdown('<div class="nav-label">Explore RQ4</div>', unsafe_allow_html=True)
     with st.container(border=True):
         tab = navigation(["Overview", "Model comparisons", "Language comparisons", "Statistical evidence"], "rq4_section")
-    released_results_note()
     if tab == "Overview":
         counts = data["analysis_class"].value_counts()
         answered = int(counts.get("No bias", 0) + counts.get("Bias", 0))
@@ -495,7 +493,6 @@ def render_rq1():
         return
     if not check_benchmark(df_fs_loaded):
         return
-    released_results_note()
 
     fact_sheet_data = {}
     if os.path.exists(FACT_SHEET_PATH):
@@ -1359,7 +1356,6 @@ elif selected_rq == "RQ2":
         st.stop()
     if not check_benchmark(responses, ("final_class", {"Factual": 2203, "Non-factual": 47, "Non-assessable": 150})):
         st.stop()
-    released_results_note()
     counts_all = responses['final_class'].value_counts().reindex(LABEL_ORDER, fill_value=0)
     factual, non_factual, non_assessable = [int(counts_all[label]) for label in LABEL_ORDER]
     assessable = factual + non_factual
